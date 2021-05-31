@@ -512,7 +512,7 @@ case class FromQuantileSketch(
   override def nullSafeEval(ar: Any, percentages: Any): Any = getOutputPercentiles(ar)
 
   override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
-    val pf = ctx.addReferenceObj("getPrcentiles", getOutputPercentiles,
+    val pf = ctx.addReferenceObj("getPercentiles", getOutputPercentiles,
       classOf[Any => Any].getCanonicalName)
     val percentile = ctx.freshName("percentile")
     val castCode = if (!returnPercentileArray) {

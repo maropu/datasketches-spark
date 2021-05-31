@@ -103,17 +103,13 @@ class ReqSketchImpl(_impl: jReqSketch) extends BaseQuantileSketchImpl {
   override def serializeTo(): Array[Byte] = _impl.toByteArray
 }
 
-abstract class BaseQuantileSketch
-  extends TypedImperativeAggregate[BaseQuantileSketchImpl]
-  with ImplicitCastInputTypes {
+trait BasePercentileEstimation extends ImplicitCastInputTypes {
 
-  def implName: String
-  def child: Expression
   def percentageExpression: Expression
 
   // Mark as lazy so that percentageExpression is not evaluated during tree transformation.
   @transient
-  private lazy val returnPercentileArray = percentageExpression.dataType.isInstanceOf[ArrayType]
+  protected lazy val returnPercentileArray = percentageExpression.dataType.isInstanceOf[ArrayType]
 
   @transient
   private lazy val percentages = percentageExpression.eval() match {
@@ -122,24 +118,15 @@ abstract class BaseQuantileSketch
     case arrayData: ArrayData => arrayData.toDoubleArray()
   }
 
-  override def children: Seq[Expression] = {
-    child :: percentageExpression :: Nil
-  }
-
-  // Returns null for empty inputs
-  override def nullable: Boolean = true
-
+  // TODO: Keeps the original input type instead of the double type
   override lazy val dataType: DataType = percentageExpression.dataType match {
     case _: ArrayType => ArrayType(DoubleType, false)
     case _ => DoubleType
   }
 
-  override def inputTypes: Seq[AbstractDataType] = {
-    val percentageExpType = percentageExpression.dataType match {
-      case _: ArrayType => ArrayType(DoubleType, false)
-      case _ => DoubleType
-    }
-    Seq(NumericType, percentageExpType)
+  protected def inputPercentageType: DataType = percentageExpression.dataType match {
+    case _: ArrayType => ArrayType(DoubleType, false)
+    case _ => DoubleType
   }
 
   // Check the inputTypes are valid, and the percentageExpression satisfies:
@@ -165,6 +152,30 @@ abstract class BaseQuantileSketch
     }
   }
 
+  protected def getPercentiles(buffer: BaseQuantileSketchImpl): Seq[Double] = {
+    if (!buffer.isEmpty) {
+      buffer.getQuantiles(percentages).map(_.toDouble).toSeq
+    } else {
+      Nil
+    }
+  }
+
+  protected def generateOutput(results: Seq[Double]): Any = {
+    if (results.isEmpty) {
+      null
+    } else if (returnPercentileArray) {
+      new GenericArrayData(results)
+    } else {
+      results.head
+    }
+  }
+}
+
+trait BaseQuantileSketchAggregate extends TypedImperativeAggregate[BaseQuantileSketchImpl] {
+
+  def implName: String
+  def child: Expression
+
   override def createAggregationBuffer(): BaseQuantileSketchImpl = {
     QuantileSketch(implName)
   }
@@ -177,8 +188,6 @@ abstract class BaseQuantileSketch
     if (value != null) {
       // Convert the value to a float value
       val floatValue = child.dataType match {
-        case DateType => value.asInstanceOf[Int].toFloat
-        case TimestampType => value.asInstanceOf[Long].toFloat
         case n: NumericType => n.numeric.toFloat(value.asInstanceOf[n.InternalType])
         case other: DataType =>
           throw new UnsupportedOperationException(
@@ -195,34 +204,30 @@ abstract class BaseQuantileSketch
     buffer
   }
 
-  override def eval(buffer: BaseQuantileSketchImpl): Any = {
-    generateOutput(getPercentiles(buffer))
-  }
-
-  private def getPercentiles(buffer: BaseQuantileSketchImpl): Seq[Double] = {
-    if (!buffer.isEmpty) {
-      buffer.getQuantiles(percentages).map(_.toDouble).toSeq
-    } else {
-      Nil
-    }
-  }
-
-  private def generateOutput(results: Seq[Double]): Any = {
-    if (results.isEmpty) {
-      null
-    } else if (returnPercentileArray) {
-      new GenericArrayData(results)
-    } else {
-      results.head
-    }
-  }
-
   override def serialize(obj: BaseQuantileSketchImpl): Array[Byte] = {
     obj.serializeTo()
   }
 
   override def deserialize(bytes: Array[Byte]): BaseQuantileSketchImpl = {
     QuantileSketch(implName, bytes)
+  }
+}
+
+abstract class BaseQuantileSketch
+  extends BaseQuantileSketchAggregate
+  with BasePercentileEstimation {
+
+  override def children: Seq[Expression] = {
+    child :: percentageExpression :: Nil
+  }
+
+  override def inputTypes: Seq[AbstractDataType] = Seq(NumericType, inputPercentageType)
+
+  // Returns null for empty inputs
+  override def nullable: Boolean = true
+
+  override def eval(buffer: BaseQuantileSketchImpl): Any = {
+    generateOutput(getPercentiles(buffer))
   }
 }
 
@@ -354,7 +359,7 @@ case class SketchQuantile(
     mutableAggBufferOffset: Int,
     inputAggBufferOffset: Int,
     implName: String)
-  extends TypedImperativeAggregate[BaseQuantileSketchImpl]
+  extends BaseQuantileSketchAggregate
   with ImplicitCastInputTypes {
 
   def this(child: Expression) = {
@@ -377,46 +382,8 @@ case class SketchQuantile(
 
   override def inputTypes: Seq[AbstractDataType] = Seq(NumericType)
 
-  override def createAggregationBuffer(): BaseQuantileSketchImpl = {
-    QuantileSketch(implName)
-  }
-
   override def eval(buffer: BaseQuantileSketchImpl): Any = {
     new GenericArrayData(buffer.serializeTo())
-  }
-
-  override def update(
-      buffer: BaseQuantileSketchImpl,
-      input: InternalRow): BaseQuantileSketchImpl = {
-    val value = child.eval(input).asInstanceOf[AnyRef]
-    // Ignore empty rows, for example: percentile_approx(null)
-    if (value != null) {
-      // Convert the value to a float value
-      val floatValue = child.dataType match {
-        case DateType => value.asInstanceOf[Int].toFloat
-        case TimestampType => value.asInstanceOf[Long].toFloat
-        case n: NumericType => n.numeric.toFloat(value.asInstanceOf[n.InternalType])
-        case other: DataType =>
-          throw new UnsupportedOperationException(
-            s"Unexpected data type ${other.catalogString}")
-      }
-      buffer.update(floatValue)
-    }
-    buffer
-  }
-
-  override def merge(buffer: BaseQuantileSketchImpl, other: BaseQuantileSketchImpl)
-      : BaseQuantileSketchImpl = {
-    buffer.merge(other)
-    buffer
-  }
-
-  override def serialize(obj: BaseQuantileSketchImpl): Array[Byte] = {
-    obj.serializeTo()
-  }
-
-  override def deserialize(bytes: Array[Byte]): BaseQuantileSketchImpl = {
-    QuantileSketch(implName, bytes)
   }
 }
 
@@ -513,7 +480,7 @@ case class FromQuantileSketch(
     child: Expression,
     percentageExpression: Expression,
     implName: String)
-  extends BinaryExpression with ImplicitCastInputTypes with NullIntolerant {
+  extends BinaryExpression with BasePercentileEstimation with NullIntolerant {
 
   def this(child: Expression, percentageExpression: Expression) = {
     this(child, percentageExpression, SQLConf.get.quantileSketchType)
@@ -523,77 +490,14 @@ case class FromQuantileSketch(
   override def left: Expression = child
   override def right: Expression = percentageExpression
 
-  override lazy val dataType: DataType = percentageExpression.dataType match {
-    case _: ArrayType => ArrayType(DoubleType, false)
-    case _ => DoubleType
-  }
+  override def inputTypes: Seq[AbstractDataType] = Seq(ArrayType(ByteType), inputPercentageType)
 
-  override def inputTypes: Seq[AbstractDataType] = {
-    val percentageExpType = percentageExpression.dataType match {
-      case _: ArrayType => ArrayType(DoubleType, false)
-      case _ => DoubleType
-    }
-    Seq(ArrayType(ByteType), percentageExpType)
-  }
-
-  // Check the inputTypes are valid, and the percentageExpression satisfies:
-  // 1. percentageExpression must be foldable;
-  // 2. percentages(s) must be in the range [0.0, 1.0].
-  override def checkInputDataTypes(): TypeCheckResult = {
-    // Validate the inputTypes
-    val defaultCheck = super.checkInputDataTypes()
-    if (defaultCheck.isFailure) {
-      defaultCheck
-    } else if (!percentageExpression.foldable) {
-      // percentageExpression must be foldable
-      TypeCheckFailure("The percentage(s) must be a constant literal, " +
-        s"but got $percentageExpression")
-    } else if (percentages == null) {
-      TypeCheckFailure("Percentage value must not be null")
-    } else if (percentages.exists(percentage => percentage < 0.0 || percentage > 1.0)) {
-      // percentages(s) must be in the range [0.0, 1.0]
-      TypeCheckFailure("Percentage(s) must be between 0.0 and 1.0, " +
-        s"but got $percentageExpression")
-    } else {
-      TypeCheckSuccess
-    }
-  }
-
-  // Mark as lazy so that percentageExpression is not evaluated during tree transformation.
-  @transient
-  private lazy val returnPercentileArray = percentageExpression.dataType.isInstanceOf[ArrayType]
-
-  @transient
-  private lazy val percentages = percentageExpression.eval() match {
-    case null => null
-    case num: Double => Array(num)
-    case arrayData: ArrayData => arrayData.toDoubleArray()
-  }
-
+  // Returns null for empty inputs
   override def nullable: Boolean = true
-
-  private def getPercentiles(buffer: BaseQuantileSketchImpl): Seq[Double] = {
-    if (!buffer.isEmpty) {
-      buffer.getQuantiles(percentages).map(_.toDouble).toSeq
-    } else {
-      Nil
-    }
-  }
-
-  private def generateOutput(results: Seq[Double]): Any = {
-    if (results.isEmpty) {
-      null
-    } else if (returnPercentileArray) {
-      new GenericArrayData(results)
-    } else {
-      results.head
-    }
-  }
 
   @transient private[this] lazy val getOutputPercentiles = {
      val convert = CatalystTypeConverters.createToScalaConverter(child.dataType)
     (ar: Any) => try {
-      val bytes = convert(ar).asInstanceOf[Seq[Byte]]
       val sketch = QuantileSketch(implName, convert(ar).asInstanceOf[Seq[Byte]].toArray)
       generateOutput(getPercentiles(sketch))
     } catch {

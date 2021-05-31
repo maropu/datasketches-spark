@@ -77,6 +77,7 @@ trait BaseQuantileSketchImpl {
   def update(v: Float): Unit
   def merge(other: BaseQuantileSketchImpl): Unit
   def getQuantiles(fractions: Array[Double]): Array[Float]
+  def getPMF(numSplits: Int): Array[Double]
   def serializeTo(): Array[Byte]
 }
 
@@ -89,6 +90,11 @@ class KllFloatsSketchImpl(_impl: jKllFloatsSketch) extends BaseQuantileSketchImp
     _impl.merge(other.impl.asInstanceOf[jKllFloatsSketch])
   override def getQuantiles(fractions: Array[Double]): Array[Float] =
     _impl.getQuantiles(fractions)
+  override def getPMF(numSplits: Int): Array[Double] = {
+    val splitSize = (_impl.getMaxValue - _impl.getMinValue) / numSplits
+    val splitPoints = (1 until numSplits).map(_ * splitSize).toArray
+    _impl.getPMF(splitPoints)
+  }
   override def serializeTo(): Array[Byte] = _impl.toByteArray
 }
 
@@ -101,6 +107,11 @@ class ReqSketchImpl(_impl: jReqSketch) extends BaseQuantileSketchImpl {
     _impl.merge(other.impl.asInstanceOf[jReqSketch])
   override def getQuantiles(fractions: Array[Double]): Array[Float] =
     _impl.getQuantiles(fractions)
+  override def getPMF(numSplits: Int): Array[Double] = {
+    val splitSize = (_impl.getMaxValue - _impl.getMinValue) / numSplits
+    val splitPoints = (1 until numSplits).map(_ * splitSize).toArray
+    _impl.getPMF(splitPoints)
+  }
   override def serializeTo(): Array[Byte] = _impl.toByteArray
 }
 
@@ -469,16 +480,16 @@ case class CombineQuantileSketches(
 
 @ExpressionDescription(
   usage = """
-    _FUNC_(col, percentage) - Computes an approximate `percentile` from an input sketch states.
+    _FUNC_(col, percentage) - Computes an approximate `percentile` from an input sketch state.
       The value of percentage must be between 0.0 and 1.0. When `percentage` is an array,
       each value of the percentage array must be between 0.0 and 1.0. In this case,
       returns the approximate percentile array of column `col` at the given percentage array.
-      The input state should be the one that the percentile sketch algorithm specified by
-      `spark.sql.dataSketches.quantiles.defaultImpl` generates.
+      The input state should be the one that the percentile sketch algorithm specified
+      by `spark.sql.dataSketches.quantiles.defaultImpl` generates.
   """,
   // group = "math_funcs",
   since = "3.1.1")
-case class FromQuantileSketch(
+case class QuantileFromSketchState(
     child: Expression,
     percentageExpression: Expression,
     implName: String)
@@ -516,15 +527,105 @@ case class FromQuantileSketch(
       classOf[Any => Any].getCanonicalName)
     val percentile = ctx.freshName("percentile")
     val castCode = if (!returnPercentileArray) {
-      s"${ev.value} = ((${boxedType(dataType)}) $percentile).${javaType(dataType)}Value();"
+      s"((${boxedType(dataType)}) $percentile).${javaType(dataType)}Value()"
     } else {
-      s"${ev.value} = (${javaType(dataType)}) $percentile;"
+      s"(${javaType(dataType)}) $percentile"
     }
     nullSafeCodeGen(ctx, ev, (ar, _) => {
       s"""
          |Object $percentile = $pf.apply($ar);
          |if ($percentile != null) {
          |  ${ev.value} = $castCode;
+         |} else {
+         |  ${ev.isNull} = true;
+         |}
+       """.stripMargin
+    })
+  }
+}
+
+@ExpressionDescription(
+  usage = """
+    _FUNC_(col, percentage) - Computes an approximate Probability Mass Function (PMF)
+      from an input sketch state. The number of splits must be greater than 1.
+      The input state should be the one that the percentile sketch algorithm specified
+      by `spark.sql.dataSketches.quantiles.defaultImpl` generates.
+  """,
+  // group = "math_funcs",
+  since = "3.1.1")
+case class PmfFromSketchState(
+    child: Expression,
+    numSplitExpr: Expression,
+    implName: String)
+  extends BinaryExpression with ImplicitCastInputTypes with NullIntolerant with Logging {
+
+  def this(child: Expression, numSplits: Expression) = {
+    this(child, numSplits, SQLConf.get.quantileSketchType)
+  }
+
+  def this(child: Expression) = {
+    this(child, Literal(9), SQLConf.get.quantileSketchType)
+  }
+
+  override def prettyName: String = "approx_pmf_estimate"
+  override def left: Expression = child
+  override def right: Expression = numSplitExpr
+
+  override val dataType: DataType = ArrayType(DoubleType, false)
+
+  override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType, IntegerType)
+
+  // Returns null for empty inputs
+  override def nullable: Boolean = true
+
+  @transient
+  private lazy val numSplits = numSplitExpr.eval().asInstanceOf[Integer]
+
+  override def checkInputDataTypes(): TypeCheckResult = {
+    // Validate the inputTypes
+    val defaultCheck = super.checkInputDataTypes()
+    if (defaultCheck.isFailure) {
+      defaultCheck
+    } else if (!numSplitExpr.foldable) {
+      // percentageExpression must be foldable
+      TypeCheckFailure("The split number must be a constant literal, " +
+        s"but got $numSplitExpr")
+    } else if (numSplits == null || numSplits <= 1) {
+      TypeCheckFailure("The split number must be greater than 1")
+    } else {
+      TypeCheckSuccess
+    }
+  }
+
+  protected def getPMF(buffer: BaseQuantileSketchImpl): Any = {
+    if (!buffer.isEmpty) {
+      new GenericArrayData(buffer.getPMF(numSplits.toInt).toSeq)
+    } else {
+      null
+    }
+  }
+
+  @transient private[this] lazy val getOutputPMF = {
+    (ar: Any) => try {
+      getPMF(QuantileSketch(implName, ar.asInstanceOf[Array[Byte]]))
+    } catch {
+      case NonFatal(_) =>
+        logWarning("Illegal input bytes found, so cannot update " +
+          s"an immediate $implName sketch data.")
+        null
+    }
+  }
+
+  override def nullSafeEval(ar: Any, percentages: Any): Any = getOutputPMF(ar)
+
+  override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
+    val pf = ctx.addReferenceObj("getPMF", getOutputPMF, classOf[Any => Any].getCanonicalName)
+    val pmf = ctx.freshName("pmf")
+    nullSafeCodeGen(ctx, ev, (ar, _) => {
+      s"""
+         |Object $pmf = $pf.apply($ar);
+         |if ($pmf != null) {
+         |  ${ev.value} = (${javaType(dataType)}) $pmf;
          |} else {
          |  ${ev.isNull} = true;
          |}

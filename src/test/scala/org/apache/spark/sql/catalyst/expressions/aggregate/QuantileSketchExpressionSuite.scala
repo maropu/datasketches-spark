@@ -29,7 +29,7 @@ class QuantileSketchExpressionSuite extends SparkFunSuite with ExpressionEvalHel
       0, 1, 0, -60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 65, 0, 0, 32, 65, 0, 0, 0,
       64, 0, 0, -128, 63, 0, 0, 0, 0)
     checkEvaluation(
-      FromQuantileSketch(
+      QuantileFromSketchState(
         Literal(bytes, BinaryType),
         Literal(0.95, DoubleType),
         "KLL"),
@@ -41,7 +41,7 @@ class QuantileSketchExpressionSuite extends SparkFunSuite with ExpressionEvalHel
     val bytes = Array[Byte](2, 1, 17, 56, 12, 0, 1, 4, 0, 0, 0, 0, 0, 0, -128, 63,
       0, 0, 0, 64, 0, 0, 32, 65)
     checkEvaluation(
-      FromQuantileSketch(
+      QuantileFromSketchState(
         Literal(bytes, BinaryType),
         Literal(0.95, DoubleType),
         "REQ"),

@@ -37,7 +37,8 @@ object DataSketches {
     expression[ReqSketch]("approx_percentile_req"),
     expression[SketchQuantile]("approx_percentile_accumulate"),
     expression[CombineQuantileSketches]("approx_percentile_combine"),
-    expression[FromQuantileSketch]("approx_percentile_estimate")
+    expression[QuantileFromSketchState]("approx_percentile_estimate"),
+    expression[PmfFromSketchState]("approx_pmf_estimate")
   )
 
   def install(): Unit = synchronized {

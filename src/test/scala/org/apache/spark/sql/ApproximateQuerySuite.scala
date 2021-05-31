@@ -130,8 +130,12 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
         .where("window.start >= '2021-01-01' AND window.end <= '2021-01-04'")
         .selectExpr("approx_percentile_combine(summaries) AS merged")
 
-      val df = merged.selectExpr("approx_percentile_estimate(merged, 0.95)")
-      checkAnswer(df, Row(3.0))
+      val df1 = merged.selectExpr("approx_percentile_estimate(merged, 0.95)")
+      checkAnswer(df1, Row(3.0))
+      val df2 = merged.selectExpr("approx_percentile_estimate(merged, array(0.05, 0.50, 0.95))")
+      checkAnswer(df2, Row(Array(1.0, 3.0, 3.0)))
+      val df3 = merged.selectExpr("approx_pmf_estimate(merged, 2)")
+      checkAnswer(df3, Row(Array(0.0, 1.0)))
     }
   }
 }

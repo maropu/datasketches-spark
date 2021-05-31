@@ -31,7 +31,7 @@ object DataSketches {
 
   private var _installed = false
 
-  private val expressions = Seq(
+  val sketchExprs = Seq(
     expression[QuantileSketch]("approx_percentile_ex"),
     expression[KllFloatsSketch]("approx_percentile_kll"),
     expression[ReqSketch]("approx_percentile_req"),
@@ -42,7 +42,7 @@ object DataSketches {
 
   def install(): Unit = synchronized {
     if (!_installed) {
-      expressions.foreach { case (name, (info, builder)) =>
+      sketchExprs.foreach { case (name, (info, builder)) =>
         FunctionRegistry.builtin.registerFunction(FunctionIdentifier(name), info, builder)
       }
       _installed = true

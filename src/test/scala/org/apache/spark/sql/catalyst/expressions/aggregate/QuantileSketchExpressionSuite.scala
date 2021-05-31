@@ -18,9 +18,33 @@
 package org.apache.spark.sql.catalyst.expressions.aggregate
 
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.sql.catalyst.expressions.{ExpressionEvalHelper, Literal}
+import org.apache.spark.sql.types._
 
-class QuantileSketchExpressionSuite extends SparkFunSuite {
+class QuantileSketchExpressionSuite extends SparkFunSuite with ExpressionEvalHelper {
 
-  test("approximate percentile exprs") {}
-  test("mergeable percentile sketch exprs") {}
+  test("FromQuantileSketch - KLL") {
+    // SELECT approx_percentile_accumulate(c) FROM VALUES (0), (1), (2), (10) AS t(c);
+    val bytes = Seq[Byte](5, 1, 15, 0, -56, 0, 8, 0, 4, 0, 0, 0, 0, 0, 0, 0, -56,
+      0, 1, 0, -60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 65, 0, 0, 32, 65, 0, 0, 0,
+      64, 0, 0, -128, 63, 0, 0, 0, 0)
+    checkEvaluation(
+      FromQuantileSketch(
+        Literal.create(bytes, ArrayType(ByteType)),
+        Literal.create(0.95, DoubleType),
+        "KLL"),
+      10.0)
+  }
+
+  test("FromQuantileSketch - REQ") {
+    // SELECT approx_percentile_accumulate(c) FROM VALUES (0), (1), (2), (10) AS t(c);
+    val bytes = Seq[Byte](2, 1, 17, 56, 12, 0, 1, 4, 0, 0, 0, 0, 0, 0, -128, 63,
+      0, 0, 0, 64, 0, 0, 32, 65)
+    checkEvaluation(
+      FromQuantileSketch(
+        Literal.create(bytes, ArrayType(ByteType)),
+        Literal.create(0.95, DoubleType),
+        "REQ"),
+      10.0)
+  }
 }

@@ -343,8 +343,8 @@ case class ReqSketch(
   """,
   examples = """
     Examples:
-      > SELECT _FUNC_(col, array(0.5, 0.4, 0.1)) FROM VALUES (0), (1), (2), (10) AS tab(col);
-       [5, 1, 15, 0, -56, 0, 8, 0, 4, 0, 0, 0, 0, 0, 0, 0, -56, 0, 1, 0, -60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 65, 0, 0, 32, 65, 0, 0, 0, 64, 0, 0, -128, 63, 0, 0, 0, 0]
+      > SELECT _FUNC_(col) FROM VALUES (0), (1), (2), (10) AS tab(col);
+       [2, 1, 17, 56, 12, 0, 1, 4, 0, 0, 0, 0, 0, 0, -128, 63, 0, 0, 0, 64, 0, 0, 32, 65]
   """,
   group = "agg_funcs",
   since = "3.1.1")
@@ -367,6 +367,7 @@ case class SketchQuantile(
   override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): SketchQuantile =
     copy(inputAggBufferOffset = newInputAggBufferOffset)
 
+  // TODO: Change `ArrayType(ByteType)` to `BinaryType`
   override lazy val dataType: DataType = ArrayType(ByteType)
 
   override def children: Seq[Expression] = child :: Nil
@@ -589,10 +590,11 @@ case class FromQuantileSketch(
     }
   }
 
-  @transient private[this] lazy val getOutputPercentiles = (ar: Any) => {
-    try {
-      val bytes = ar.asInstanceOf[ArrayData].toByteArray()
-      val sketch = QuantileSketch(implName, bytes)
+  @transient private[this] lazy val getOutputPercentiles = {
+     val convert = CatalystTypeConverters.createToScalaConverter(child.dataType)
+    (ar: Any) => try {
+      val bytes = convert(ar).asInstanceOf[Seq[Byte]]
+      val sketch = QuantileSketch(implName, convert(ar).asInstanceOf[Seq[Byte]].toArray)
       generateOutput(getPercentiles(sketch))
     } catch {
       case NonFatal(_) => null
@@ -604,12 +606,21 @@ case class FromQuantileSketch(
   override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
     val pf = ctx.addReferenceObj("getPrcentiles", getOutputPercentiles,
       classOf[Any => Any].getCanonicalName)
+    val percentile = ctx.freshName("percentile")
+    val castCode = if (!returnPercentileArray) {
+      s"${ev.value} = ((${boxedType(dataType)}) $percentile).${javaType(dataType)}Value();"
+    } else {
+      s"${ev.value} = (${javaType(dataType)}) $percentile;"
+    }
     nullSafeCodeGen(ctx, ev, (ar, _) => {
-      if (!returnPercentileArray) {
-        s"${ev.value} = ((${boxedType(dataType)})$pf.apply($ar)).${javaType(dataType)}Value();"
-      } else {
-        s"${ev.value} = (${javaType(dataType)})$pf.apply($ar);"
-      }
+      s"""
+         |Object $percentile = $pf.apply($ar);
+         |if ($percentile != null) {
+         |  ${ev.value} = $castCode;
+         |} else {
+         |  ${ev.isNull} = true;
+         |}
+       """.stripMargin
     })
   }
 }

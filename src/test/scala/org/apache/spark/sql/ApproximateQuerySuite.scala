@@ -20,6 +20,7 @@ package org.apache.spark.sql
 import org.scalatest.BeforeAndAfterAll
 
 import org.apache.spark.sql.test.SQLTestUtils
+import org.apache.spark.sql.types._
 
 class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAfterAll {
 
@@ -65,15 +66,29 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
              |SELECT approx_percentile_ex(c, array(0.5, 0.4, 0.1))
              |  FROM VALUES (0), (1), (2), (null), (10) AS t(c);
            """.stripMargin)
-        checkAnswer(df1, Row(Array(2.0, 1.0, 0.0)))
+        checkAnswer(df1, Row(Array(2, 1, 0)))
 
         val df2 = _spark.sql(
           s"""
              |SELECT approx_percentile_ex(c, 0.5)
              |  FROM VALUES (0), (6), (7), (null), (9), (10) AS t(c);
            """.stripMargin)
-        checkAnswer(df2, Row(7.0))
+        checkAnswer(df2, Row(7))
       }
+    }
+  }
+
+  test("approx_percentile_ex should keep an input type in output") {
+    val testTypes = Seq(("TINYINT", ByteType), ("INT", IntegerType), ("LONG", LongType),
+      ("FLOAT", FloatType), ("DOUBLE", DoubleType), ("DECIMAL(10, 0)", DecimalType.IntDecimal))
+
+    testTypes.foreach { case (inputType, expectedType) =>
+      val df = _spark.sql(
+        s"""
+           |SELECT approx_percentile_ex(CAST(c AS $inputType), 0.5)
+           |  FROM VALUES (0), (null) AS t(c);
+         """.stripMargin)
+      assert(df.schema.head.dataType === expectedType)
     }
   }
 
@@ -103,14 +118,14 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
            |SELECT $f(c, array(0.5, 0.4, 0.1))
            |  FROM VALUES (0), (1), (2), (null), (10) AS t(c);
          """.stripMargin)
-      checkAnswer(df1, Row(Array(2.0, 1.0, 0.0)))
+      checkAnswer(df1, Row(Array(2, 1, 0)))
 
       val df2 = _spark.sql(
         s"""
            |SELECT $f(c, 0.5)
            |  FROM VALUES (0), (6), (7), (null), (9), (10) AS t(c);
          """.stripMargin)
-      checkAnswer(df2, Row(7.0))
+      checkAnswer(df2, Row(7))
     }
   }
 
@@ -155,6 +170,26 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
       checkAnswer(df2, Row(Array(1.0, 3.0, 3.0)))
       val df3 = merged.selectExpr("approx_pmf_estimate(merged, 2)")
       checkAnswer(df3, Row(Array(0.0, 1.0)))
+    }
+  }
+
+  test("approx_percentile_estimate ignores an input type in output") {
+    Seq("TINYINT", "SHORT", "INT", "LONG", "FLOAT", "DOUBLE", "DECIMAL(10, 0)")
+        .foreach { inputType =>
+      withTempView("t") {
+        _spark.sql(
+          s"""
+             |CREATE TEMPORARY VIEW t AS
+             |  SELECT approx_percentile_accumulate(CAST(c AS $inputType)) summaries
+             |    FROM VALUES (0), (1), (2), (null), (10) AS t(c);
+           """.stripMargin)
+
+        val df = _spark.sql(
+          s"""
+             |SELECT approx_percentile_estimate(summaries, 0.5) FROM t;
+           """.stripMargin)
+        assert(df.schema.head.dataType === DoubleType)
+      }
     }
   }
 

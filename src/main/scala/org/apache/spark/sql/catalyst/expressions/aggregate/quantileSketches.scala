@@ -116,6 +116,7 @@ class ReqSketchImpl(_impl: jReqSketch) extends BaseQuantileSketchImpl {
 }
 
 trait BasePercentileEstimation extends ImplicitCastInputTypes {
+  self: Expression =>
 
   def percentageExpression: Expression
 
@@ -130,10 +131,12 @@ trait BasePercentileEstimation extends ImplicitCastInputTypes {
     case arrayData: ArrayData => arrayData.toDoubleArray()
   }
 
-  // TODO: Keeps the original input type instead of the double type
-  override lazy val dataType: DataType = percentageExpression.dataType match {
-    case _: ArrayType => ArrayType(DoubleType, false)
-    case _ => DoubleType
+  override lazy val dataType: DataType = {
+    val inputType = children.head.dataType
+    percentageExpression.dataType match {
+      case _: ArrayType => ArrayType(inputType, false)
+      case _ => inputType
+    }
   }
 
   protected def inputPercentageType: DataType = percentageExpression.dataType match {
@@ -164,15 +167,28 @@ trait BasePercentileEstimation extends ImplicitCastInputTypes {
     }
   }
 
-  protected def getPercentiles(buffer: BaseQuantileSketchImpl): Seq[Double] = {
+  protected def createOutputConvertFunc(): Float => Any = children.head.dataType match {
+    case ByteType => (v: Float) => v.toByte
+    case ShortType => (v: Float) => v.toShort
+    case IntegerType => (v: Float) => v.toInt
+    case LongType => (v: Float) => v.toLong
+    case FloatType => (v: Float) => v
+    case DoubleType => (v: Float) => v.toDouble
+    case DecimalType.Fixed(p, s) => (v: Float) => Decimal(v).changePrecision(p, s)
+    case t => throw new IllegalStateException(s"Unexpected data type ${t.catalogString}")
+  }
+
+  private lazy val convertFunc = createOutputConvertFunc()
+
+  protected def getPercentiles(buffer: BaseQuantileSketchImpl): Seq[Any] = {
     if (!buffer.isEmpty) {
-      buffer.getQuantiles(percentages).map(_.toDouble).toSeq
+      buffer.getQuantiles(percentages).map(convertFunc).toSeq
     } else {
       Nil
     }
   }
 
-  protected def generateOutput(results: Seq[Double]): Any = {
+  protected def generateOutput(results: Seq[Any]): Any = {
     if (results.isEmpty) {
       null
     } else if (returnPercentileArray) {
@@ -201,9 +217,7 @@ trait BaseQuantileSketchAggregate extends TypedImperativeAggregate[BaseQuantileS
       // Convert the value to a float value
       val floatValue = child.dataType match {
         case n: NumericType => n.numeric.toFloat(value.asInstanceOf[n.InternalType])
-        case other: DataType =>
-          throw new UnsupportedOperationException(
-            s"Unexpected data type ${other.catalogString}")
+        case t => throw new IllegalStateException(s"Unexpected data type ${t.catalogString}")
       }
       buffer.update(floatValue)
     }
@@ -255,9 +269,9 @@ abstract class BaseQuantileSketch
   examples = """
     Examples:
       > SELECT _FUNC_(col, array(0.5, 0.4, 0.1)) FROM VALUES (0), (1), (2), (10) AS tab(col);
-       [2.0,1.0,0.0]
+       [2,1,0]
       > SELECT _FUNC_(col, 0.5) FROM VALUES (0), (6), (7), (9), (10) AS tab(col);
-       7.0
+       7
   """,
   group = "agg_funcs",
   since = "3.1.1")
@@ -502,6 +516,16 @@ case class QuantileFromSketchState(
   override def prettyName: String = "approx_percentile_estimate"
   override def left: Expression = child
   override def right: Expression = percentageExpression
+
+  // TODO: Keeps the original input type instead of the double type
+  override lazy val dataType: DataType = percentageExpression.dataType match {
+    case _: ArrayType => ArrayType(DoubleType, false)
+    case _ => DoubleType
+  }
+
+  override protected def createOutputConvertFunc(): Float => Any = {
+    (v: Float) => v.toDouble
+  }
 
   override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType, inputPercentageType)
 

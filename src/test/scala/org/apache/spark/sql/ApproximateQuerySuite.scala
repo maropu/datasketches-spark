@@ -77,6 +77,25 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
     }
   }
 
+  test("approx_percentile_ex - error handling") {
+    val errMsg1 = intercept[AnalysisException] {
+      _spark.sql("SELECT approx_percentile_ex(c, p) FROM VALUES (0, 0.95) AS t(c, p)")
+    }.getMessage()
+    assert(errMsg1.contains("The percentage(s) must be a constant literal"))
+
+    val errMsg2 = intercept[AnalysisException] {
+      _spark.sql("SELECT approx_percentile_ex(c, null) FROM VALUES (0) AS t(c)")
+    }.getMessage()
+    assert(errMsg2.contains("Percentage value must not be null"))
+
+    Seq("-1.0", "array(0.1, -1.0)").foreach { p =>
+      val errMsg3 = intercept[AnalysisException] {
+        _spark.sql(s"SELECT approx_percentile_ex(c, $p) FROM VALUES (0) AS t(c)")
+      }.getMessage()
+      assert(errMsg3.contains("Percentage(s) must be between 0.0 and 1.0"))
+    }
+  }
+
   test("approximate percentile tests - KLL/REQ") {
     Seq("approx_percentile_kll", "approx_percentile_req").foreach { f =>
       val df1 = _spark.sql(
@@ -136,6 +155,59 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
       checkAnswer(df2, Row(Array(1.0, 3.0, 3.0)))
       val df3 = merged.selectExpr("approx_pmf_estimate(merged, 2)")
       checkAnswer(df3, Row(Array(0.0, 1.0)))
+    }
+  }
+
+  test("approx_percentile_estimate - error handling") {
+    val errMsg1 = intercept[AnalysisException] {
+      _spark.sql(
+        s"""
+           |SELECT approx_percentile_estimate(s, p)
+           |  FROM VALUES (binary('abc'), 0.95) AS t(s, p)
+         """.stripMargin)
+    }.getMessage()
+    assert(errMsg1.contains("The percentage(s) must be a constant literal"))
+
+    val errMsg2 = intercept[AnalysisException] {
+      _spark.sql(
+        s"""
+           |SELECT approx_percentile_estimate(s, null)
+           |  FROM VALUES (binary('abc')) AS t(s)
+         """.stripMargin)
+    }.getMessage()
+    assert(errMsg2.contains("Percentage value must not be null"))
+
+    Seq("-1.0", "array(0.1, -1.0)").foreach { p =>
+      val errMsg3 = intercept[AnalysisException] {
+        _spark.sql(
+          s"""
+             |SELECT approx_percentile_estimate(s, $p)
+             |  FROM VALUES (binary('abc')) AS t(s)
+           """.stripMargin)
+      }.getMessage()
+      assert(errMsg3.contains("Percentage(s) must be between 0.0 and 1.0"))
+    }
+  }
+
+  test("approx_pmf_estimate - error handling") {
+    val errMsg1 = intercept[AnalysisException] {
+      _spark.sql(
+        s"""
+           |SELECT approx_pmf_estimate(s, p)
+           |  FROM VALUES (binary('abc'), 2) AS t(s, p)
+         """.stripMargin)
+    }.getMessage()
+    assert(errMsg1.contains("The split number must be a constant literal"))
+
+    Seq("null", "-1", "0", "1").foreach { numSplit =>
+      val errMsg2 = intercept[AnalysisException] {
+        _spark.sql(
+          s"""
+             |SELECT approx_pmf_estimate(s, $numSplit)
+             |  FROM VALUES (binary('abc')) AS t(s)
+           """.stripMargin)
+      }.getMessage()
+      assert(errMsg2.contains("The split number must be greater than 1"))
     }
   }
 }

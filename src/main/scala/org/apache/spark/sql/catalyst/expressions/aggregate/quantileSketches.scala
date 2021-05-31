@@ -25,8 +25,9 @@ import org.apache.datasketches.kll.{KllFloatsSketch => jKllFloatsSketch}
 import org.apache.datasketches.memory.Memory
 import org.apache.datasketches.req.{ReqSketch => jReqSketch}
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.DataSketchConf._
-import org.apache.spark.sql.catalyst.{CatalystTypeConverters, InternalRow}
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult.{TypeCheckFailure, TypeCheckSuccess}
 import org.apache.spark.sql.catalyst.expressions._
@@ -372,8 +373,7 @@ case class SketchQuantile(
   override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): SketchQuantile =
     copy(inputAggBufferOffset = newInputAggBufferOffset)
 
-  // TODO: Change `ArrayType(ByteType)` to `BinaryType`
-  override lazy val dataType: DataType = ArrayType(ByteType)
+  override lazy val dataType: DataType = BinaryType
 
   override def children: Seq[Expression] = child :: Nil
 
@@ -383,7 +383,7 @@ case class SketchQuantile(
   override def inputTypes: Seq[AbstractDataType] = Seq(NumericType)
 
   override def eval(buffer: BaseQuantileSketchImpl): Any = {
-    new GenericArrayData(buffer.serializeTo())
+    buffer.serializeTo()
   }
 }
 
@@ -401,7 +401,8 @@ case class CombineQuantileSketches(
     inputAggBufferOffset: Int,
     implName: String)
   extends TypedImperativeAggregate[BaseQuantileSketchImpl]
-  with ImplicitCastInputTypes {
+  with ImplicitCastInputTypes
+  with Logging {
 
   def this(child: Expression) = {
     this(child, 0, 0, SQLConf.get.quantileSketchType)
@@ -424,24 +425,25 @@ case class CombineQuantileSketches(
   // Returns null for empty inputs
   override def nullable: Boolean = true
 
-  override lazy val dataType: DataType = ArrayType(ByteType)
+  override lazy val dataType: DataType = BinaryType
 
-  override def inputTypes: Seq[AbstractDataType] = Seq(ArrayType(ByteType))
+  override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType)
 
   override def createAggregationBuffer(): BaseQuantileSketchImpl = {
     QuantileSketch(implName)
   }
 
-  private lazy val convert = CatalystTypeConverters.createToScalaConverter(child.dataType)
-
   override def update(
       buffer: BaseQuantileSketchImpl,
       input: InternalRow): BaseQuantileSketchImpl = {
     try {
-      val bytes = convert(child.eval(input)).asInstanceOf[Seq[Byte]].toArray
+      val bytes = child.eval(input).asInstanceOf[Array[Byte]]
       buffer.merge(QuantileSketch(implName, bytes))
     } catch {
-      case NonFatal(_) => // Do nothing
+      case e @ NonFatal(_) =>
+        logWarning("Illegal input bytes found, so cannot update " +
+          s"an immediate $implName sketch data.")
+        throw e
     }
     buffer
   }
@@ -453,7 +455,7 @@ case class CombineQuantileSketches(
   }
 
   override def eval(buffer: BaseQuantileSketchImpl): Any = {
-    new GenericArrayData(buffer.serializeTo())
+    buffer.serializeTo()
   }
 
   override def serialize(obj: BaseQuantileSketchImpl): Array[Byte] = {
@@ -480,7 +482,7 @@ case class FromQuantileSketch(
     child: Expression,
     percentageExpression: Expression,
     implName: String)
-  extends BinaryExpression with BasePercentileEstimation with NullIntolerant {
+  extends BinaryExpression with BasePercentileEstimation with NullIntolerant with Logging {
 
   def this(child: Expression, percentageExpression: Expression) = {
     this(child, percentageExpression, SQLConf.get.quantileSketchType)
@@ -490,18 +492,20 @@ case class FromQuantileSketch(
   override def left: Expression = child
   override def right: Expression = percentageExpression
 
-  override def inputTypes: Seq[AbstractDataType] = Seq(ArrayType(ByteType), inputPercentageType)
+  override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType, inputPercentageType)
 
   // Returns null for empty inputs
   override def nullable: Boolean = true
 
   @transient private[this] lazy val getOutputPercentiles = {
-     val convert = CatalystTypeConverters.createToScalaConverter(child.dataType)
     (ar: Any) => try {
-      val sketch = QuantileSketch(implName, convert(ar).asInstanceOf[Seq[Byte]].toArray)
+      val sketch = QuantileSketch(implName, ar.asInstanceOf[Array[Byte]])
       generateOutput(getPercentiles(sketch))
     } catch {
-      case NonFatal(_) => null
+      case NonFatal(_) =>
+        logWarning("Illegal input bytes found, so cannot update " +
+          s"an immediate $implName sketch data.")
+        null
     }
   }
 

@@ -122,9 +122,9 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
         .agg(expr("approx_percentile_accumulate(v) AS summaries"))
 
       assert(summaries.schema.toDDL ===
-        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP>,`summaries` ARRAY<TINYINT>")
-      checkAnswer(summaries.selectExpr("size(summaries)"),
-        Seq(Row(20), Row(20), Row(20), Row(12)))
+        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP>,`summaries` BINARY")
+      checkAnswer(summaries.selectExpr("bit_length(summaries)"),
+        Seq(Row(160), Row(160), Row(160), Row(96)))
 
       val merged = summaries
         .where("window.start >= '2021-01-01' AND window.end <= '2021-01-04'")

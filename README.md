@@ -28,7 +28,7 @@ DataSketches APIs available as built-in functions.
 
 # This example uses the Individual household electric power consumption Data Set in the UCI Machine Learning Repository:
 # - https://archive.ics.uci.edu/ml/datasets/Individual+household+electric+power+consumption
->>> df = spark.read.format("csv").option("header", true).option("sep", ";").load("household_power_consumption.txt").selectExpr("to_date(Date, 'dd/MM/yyyy') AS Date", "CAST(Global_active_power AS double) Global_active_power")
+>>> df = spark.read.format("csv").option("header", True).option("sep", ";").load("household_power_consumption.txt").selectExpr("to_date(Date, 'dd/MM/yyyy') AS Date", "CAST(Global_active_power AS double) Global_active_power")
 >>> df.describe().show(5, False)
 +-------+-------------------+
 |summary|Global_active_power|
@@ -96,7 +96,7 @@ or “most frequently occurring” items in an input column:
 |            540455|                              4361|
 +------------------+----------------------------------+
 
->>> df.selectExpr("inline(approx_freqitems(Description))").show(false)
+>>> df.selectExpr("inline(approx_freqitems(Description))").show(7, False)
 +----------------------------------+--------+
 |item                              |estimate|
 +----------------------------------+--------+
@@ -146,6 +146,7 @@ only showing top 3 rows
 
 ## TODO
 
+ - Supports automatic function loading when initializing SparkSession (For more details, see SPARK-35380).
  - Supports the other sketch algorithms implemented in Apache DataSketches.
  - Checks performance differences between the built-in funtion and DataSketches ones.
 

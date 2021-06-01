@@ -58,9 +58,9 @@ estimate quantile values in specific intervals later just like [the Snowflake bu
 +------------------------------------------+--------------------------------------------------+
 |                                    window|                                         summaries|
 +------------------------------------------+--------------------------------------------------+
-|{2006-12-14 09:00:00, 2006-12-21 09:00:00}|[4, 1, 17, 40, 12, 0, 7, 0, -86, 29, 0, 0, 0, 0...|
-|{2008-03-13 09:00:00, 2008-03-20 09:00:00}|[4, 1, 17, 40, 12, 0, 7, 0, 96, 39, 0, 0, 0, 0,...|
-|{2007-05-03 09:00:00, 2007-05-10 09:00:00}|[4, 1, 17, 40, 12, 0, 7, 0, 96, 39, 0, 0, 0, 0,...|
+|{2006-12-14 09:00:00, 2006-12-21 09:00:00}|[04 01 11 28 0C 00 07 00 AA 1D 00 00 00 00 00 0...|
+|{2009-12-03 09:00:00, 2009-12-10 09:00:00}|[04 01 11 28 0C 00 05 00 9E 05 00 00 00 00 00 0...|
+|{2009-10-22 09:00:00, 2009-10-29 09:00:00}|[04 01 11 28 0C 00 07 00 60 27 00 00 00 00 00 0...|
 +------------------------------------------+--------------------------------------------------+
 only showing top 3 rows
 
@@ -78,6 +78,70 @@ only showing top 3 rows
 +--------------------------------------------------------------------------------------+
 |[0.9250280810398008, 0.07003322180158443, 0.004825778691690984, 1.1291846692380381E-4]|
 +--------------------------------------------------------------------------------------+
+```
+
+## Frequent Item Sketches
+
+A class of “Heavy Hitters” algorithms enables you to approximately identify the “heaviest”
+or “most frequently occurring” items in an input column:
+
+```
+# This example uses the E-Commerce Data from UK retailer in the Kaggle data set:
+# - https://www.kaggle.com/carrie1/ecommerce-data
+>>> df = spark.read.format("csv").option("header", True).load("data.csv")
+>>> df.selectExpr("count(Description)", "approx_count_distinct(Description)").show()
++------------------+----------------------------------+
+|count(Description)|approx_count_distinct(Description)|
++------------------+----------------------------------+
+|            540455|                              4361|
++------------------+----------------------------------+
+
+>>> df.selectExpr("inline(approx_freqitems(Description))").show(false)
++----------------------------------+--------+
+|item                              |estimate|
++----------------------------------+--------+
+|WHITE HANGING HEART T-LIGHT HOLDER|2369    |
+|REGENCY CAKESTAND 3 TIER          |2200    |
+|JUMBO BAG RED RETROSPOT           |2159    |
+|PARTY BUNTING                     |1752    |
+|LUNCH BAG RED RETROSPOT           |1638    |
+|SET OF 3 CAKE TINS PANTRY DESIGN  |1562    |
+|ASSORTED COLOUR BIRD ORNAMENT     |1504    |
++----------------------------------+--------+
+```
+
+To pre-compute summaries for each group and estimate frequent items in some of them,
+you can use similar functions to the quantile sketch ones:
+
+```
+>>> import pyspark.sql.functions as f
+>>> summaries = df.groupBy("Country").agg(f.expr("approx_freqitems_accumulate(Description) As summaries"))
+>>> summaries.show(3)
++---------+--------------------+
+|  Country|           summaries|
++---------+--------------------+
+|   Sweden|[04 01 0A 0A 09 0...|
+|Singapore|[04 01 0A 0A 08 0...|
+|  Germany|[04 01 0A 0A 0A 0...|
++---------+--------------------+
+only showing top 3 rows
+
+>>> df = summaries.where("Country IN ('United Kingdom', 'Germany', 'Spain')").selectExpr("approx_freqitems_combine(summaries) merged")
+>>> df.selectExpr("inline(approx_freqitems_estimate(merged))").show(10, False)
++----------------------------------+--------+
+|item                              |estimate|
++----------------------------------+--------+
+|WHITE HANGING HEART T-LIGHT HOLDER|2292    |
+|JUMBO BAG RED RETROSPOT           |2042    |
+|REGENCY CAKESTAND 3 TIER          |1965    |
+|PARTY BUNTING                     |1678    |
+|LUNCH BAG RED RETROSPOT           |1488    |
+|ASSORTED COLOUR BIRD ORNAMENT     |1442    |
+|SET OF 3 CAKE TINS PANTRY DESIGN  |1437    |
+|PAPER CHAIN KIT 50'S CHRISTMAS    |1310    |
+|LUNCH BAG  BLACK SKULL.           |1309    |
+|SPOTTY BUNTING                    |1307    |
++----------------------------------+--------+
 ```
 
 ## TODO

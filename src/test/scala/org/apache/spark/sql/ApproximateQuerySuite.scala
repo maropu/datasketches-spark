@@ -129,7 +129,7 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
     }
   }
 
-  test("mergeable summary tests") {
+  test("mergeable percentile summary tests") {
     import org.apache.spark.sql.functions._
     import testImplicits._
 
@@ -243,6 +243,55 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
            """.stripMargin)
       }.getMessage()
       assert(errMsg2.contains("The split number must be greater than 1"))
+    }
+  }
+
+  test("approximate frequent items tests") {
+    val df = _spark.sql(
+      s"""
+         |SELECT approx_freqitems(c)
+         |  FROM VALUES ('a'), ('a'), ('b'), (null), ('c'), ('a') AS t(c);
+       """.stripMargin)
+    checkAnswer(df, Row(Array(Row("a", 3), Row("c", 1), Row("b", 1))))
+  }
+
+  test("mergeable frequent items summary tests") {
+    import org.apache.spark.sql.functions._
+    import testImplicits._
+
+    withTempView("t") {
+      _spark.sql(
+        s"""
+           |CREATE TEMPORARY VIEW t AS SELECT * FROM VALUES
+           |  (date("2021-01-01"), 'a'),
+           |  (date("2021-01-01"), 'a'),
+           |  (date("2021-01-01"), 'a'),
+           |  (date("2021-01-02"), 'b'),
+           |  (date("2021-01-02"), 'a'),
+           |  (date("2021-01-02"), 'b'),
+           |  (date("2021-01-02"), null),
+           |  (date("2021-01-03"), 'b'),
+           |  (date("2021-01-03"), 'a'),
+           |  (date("2021-01-03"), 'c'),
+           |  (date("2021-01-04"), 'a')
+           |AS t(date, v);
+         """.stripMargin)
+
+      val summaries = _spark.table("t")
+        .groupBy(window($"date", "1 day"))
+        .agg(expr("approx_freqitems_accumulate(v) AS summaries"))
+
+      assert(summaries.schema.toDDL ===
+        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP>,`summaries` BINARY")
+      checkAnswer(summaries.selectExpr("bit_length(summaries)"),
+        Seq(Row(360), Row(360), Row(464), Row(568)))
+
+      val merged = summaries
+        .where("window.start >= '2021-01-01' AND window.end <= '2021-01-04'")
+        .selectExpr("approx_freqitems_combine(summaries) AS merged")
+
+      val df = merged.selectExpr("approx_freqitems_estimate(merged)")
+      checkAnswer(df, Row(Array(Row("b", 3), Row("a", 2), Row("c", 1))))
     }
   }
 }

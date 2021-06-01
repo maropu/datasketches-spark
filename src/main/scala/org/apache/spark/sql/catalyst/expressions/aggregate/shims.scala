@@ -32,13 +32,20 @@ object DataSketches {
   private var _installed = false
 
   val sketchExprs = Seq(
+    // Quantile sketches
     expression[QuantileSketch]("approx_percentile_ex"),
     expression[KllFloatsSketch]("approx_percentile_kll"),
     expression[ReqSketch]("approx_percentile_req"),
     expression[SketchQuantile]("approx_percentile_accumulate"),
     expression[CombineQuantileSketches]("approx_percentile_combine"),
     expression[QuantileFromSketchState]("approx_percentile_estimate"),
-    expression[PmfFromSketchState]("approx_pmf_estimate")
+    expression[PmfFromSketchState]("approx_pmf_estimate"),
+
+    // Frequent item sketches
+    expression[FreqItemSketches]("approx_freqitems"),
+    expression[SketchFreqItems]("approx_freqitems_accumulate"),
+    expression[CombineFreqItemSketches]("approx_freqitems_combine"),
+    expression[FreqItemFromSketchState]("approx_freqitems_estimate")
   )
 
   def install(): Unit = synchronized {

@@ -18,12 +18,13 @@
 package org.apache.spark.sql.catalyst.expressions.aggregate
 
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.expressions.{ExpressionEvalHelper, Literal}
 import org.apache.spark.sql.types._
 
-class QuantileSketchExpressionSuite extends SparkFunSuite with ExpressionEvalHelper {
+class SketchExpressionSuite extends SparkFunSuite with ExpressionEvalHelper {
 
-  test("FromQuantileSketch - KLL") {
+  test("QuantileFromSketchState - KLL") {
     // SELECT approx_percentile_accumulate(c) FROM VALUES (0), (1), (2), (10) AS t(c);
     val bytes = Array[Byte](5, 1, 15, 0, -56, 0, 8, 0, 4, 0, 0, 0, 0, 0, 0, 0, -56,
       0, 1, 0, -60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 65, 0, 0, 32, 65, 0, 0, 0,
@@ -36,7 +37,7 @@ class QuantileSketchExpressionSuite extends SparkFunSuite with ExpressionEvalHel
       10.0)
   }
 
-  test("FromQuantileSketch - REQ") {
+  test("QuantileFromSketchState - REQ") {
     // SELECT approx_percentile_accumulate(c) FROM VALUES (0), (1), (2), (10) AS t(c);
     val bytes = Array[Byte](2, 1, 17, 56, 12, 0, 1, 4, 0, 0, 0, 0, 0, 0, -128, 63,
       0, 0, 0, 64, 0, 0, 32, 65)
@@ -46,5 +47,15 @@ class QuantileSketchExpressionSuite extends SparkFunSuite with ExpressionEvalHel
         Literal(0.95, DoubleType),
         "REQ"),
       10.0)
+  }
+
+  test("FreqItemFromSketchState - KLL") {
+    // SELECT approx_freqitems_accumulate(c) FROM VALUES ('a'), ('a'), ('b'), ('c'), ('a') AS t(c);
+    val bytes = Array[Byte](4, 1, 10, 3, 3, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3,
+      0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 99, 1, 0, 0, 0, 98, 1, 0, 0, 0, 97)
+    checkEvaluation(
+      FreqItemFromSketchState(Literal(bytes, BinaryType)),
+      Array(Row("a", 3L), Row("c", 1L), Row("b", 1L)))
   }
 }

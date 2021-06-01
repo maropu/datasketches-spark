@@ -69,6 +69,15 @@ object DataSketchConf {
     .intConf
     .checkValue(_ > 0, "The parameter `k` must be positive.")
     .createWithDefault(12)
+
+  val FREQUENT_ITEM_SKETCH_MAX_MAP_SIZE = buildConf("spark.sql.dataSketches.freqItems.maxMapSize")
+    .doc("Specifies the physical size of the internal hash map managed by this sketch and " +
+      "must be a power of 2. The maximum capacity of this internal hash map is " +
+      "0.75 times * maxMapSize. Both the ultimate accuracy and size of this sketch are " +
+      "functions of maxMapSize.")
+    .intConf
+    .checkValue(_ > 0, "The parameter `maxMapSize` must be a power of 2.")
+    .createWithDefault(1024)
 }
 
 class DataSketchConf(conf: SQLConf) {
@@ -81,6 +90,8 @@ class DataSketchConf(conf: SQLConf) {
   def quantileSketchKInKLL: Int = getConf(QUANTILE_SKETCH_KLL_K)
 
   def quantileSketchKInREQ: Int = getConf(QUANTILE_SKETCH_REQ_K)
+
+  def frequentItemSketchMaxMapSize: Int = getConf(FREQUENT_ITEM_SKETCH_MAX_MAP_SIZE)
 
   /**
    * Return the value of configuration property for the given key. If the key is not set yet,

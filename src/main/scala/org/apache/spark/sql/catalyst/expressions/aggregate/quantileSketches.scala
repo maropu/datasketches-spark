@@ -211,6 +211,7 @@ trait BaseQuantileSketchAggregate extends TypedImperativeAggregate[BaseQuantileS
   override def update(
       buffer: BaseQuantileSketchImpl,
       input: InternalRow): BaseQuantileSketchImpl = {
+
     val value = child.eval(input).asInstanceOf[AnyRef]
     // Ignore empty rows, for example: percentile_approx(null)
     if (value != null) {
@@ -375,7 +376,7 @@ case class ReqSketch(
   examples = """
     Examples:
       > SELECT _FUNC_(col) FROM VALUES (0), (1), (2), (10) AS tab(col);
-       [2, 1, 17, 56, 12, 0, 1, 4, 0, 0, 0, 0, 0, 0, -128, 63, 0, 0, 0, 64, 0, 0, 32, 65]
+       02 01 11 38 0C 00 01 04 00 00 00 00 00 00 80 3F 00 00 00 40 00 00 20 41
   """,
   group = "agg_funcs",
   since = "3.1.1")
@@ -414,9 +415,9 @@ case class SketchQuantile(
 
 @ExpressionDescription(
   usage = """
-    _FUNC_(col, percentage) - Combines (i.e. merges) multiple input sketch states into
-      a single output state. Each state should be the one that the percentile sketch algorithm
-      specified by `spark.sql.dataSketches.quantiles.defaultImpl` generates.
+    _FUNC_(col) - Combines (i.e. merges) multiple input sketch states into a single output state.
+      Each state should be the one that the percentile sketch algorithm specified by
+      `spark.sql.dataSketches.quantiles.defaultImpl` generates.
   """,
   group = "agg_funcs",
   since = "3.1.1")

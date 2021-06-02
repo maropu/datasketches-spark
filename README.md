@@ -6,9 +6,9 @@ Please visit [the main website](https://datasketches.apache.org/) for more DataS
 
 ## Quantile Sketches
 
-In the same way as the built-in quantile estimation function (`approx_percentile`),
-this plugin enalbes you to use the alternative function (`approx_percentile_ex`) that exploits
-theoretically-meageable and very compact quantile sketches:
+As the built-in percentile estimation function (`approx_percentile`),
+this plugin enalbes you to use an alternative function (`approx_percentile_ex`) to estimate percentiles
+in a theoretically-meageable and very compact way:
 
 ```
 $ git clone https://github.com/maropu/datasketches-spark.git
@@ -26,7 +26,7 @@ Using Python version 3.6.8 (default, Dec 29 2018 19:04:46)
 SparkSession available as 'spark'.
 DataSketches APIs available as built-in functions.
 
-# This example uses the Individual household electric power consumption Data Set in the UCI Machine Learning Repository:
+# This example uses the individual household electric power consumption data set in the UCI Machine Learning Repository:
 # - https://archive.ics.uci.edu/ml/datasets/Individual+household+electric+power+consumption
 >>> df = spark.read.format("csv").option("header", True).option("sep", ";").load("household_power_consumption.txt").selectExpr("to_date(Date, 'dd/MM/yyyy') AS Date", "CAST(Global_active_power AS double) Global_active_power")
 >>> df.describe().show(5, False)
@@ -48,8 +48,8 @@ DataSketches APIs available as built-in functions.
 +-----+-------+----------------+
 ```
 
-Moreover, this plugin provies functionalities to accumulate quantile summaries in time intervals and
-estimate quantile values in specific intervals later just like [the Snowflake built-in functions](https://docs.snowflake.com/en/user-guide/querying-approximate-percentile-values.html):
+Moreover, this plugin provies functionalities to accumulate quantile summaries for each time interval and
+estimate quantile values over specific intervals later just like [the Snowflake built-in functions](https://docs.snowflake.com/en/user-guide/querying-approximate-percentile-values.html):
 
 ```
 >>> import pyspark.sql.functions as f
@@ -86,7 +86,7 @@ A class of “Heavy Hitters” algorithms enables you to approximately identify 
 or “most frequently occurring” items in an input column:
 
 ```
-# This example uses the E-Commerce Data from UK retailer in the Kaggle data set:
+# This example uses the e-commerce data from UK retailer in the Kaggle data set:
 # - https://www.kaggle.com/carrie1/ecommerce-data
 >>> df = spark.read.format("csv").option("header", True).load("data.csv")
 >>> df.selectExpr("count(Description)", "approx_count_distinct(Description)").show()

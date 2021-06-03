@@ -80,6 +80,14 @@ only showing top 3 rows
 +--------------------------------------------------------------------------------------+
 ```
 
+### Configurations
+
+| Property Name | Default | Meaning |
+| ---- | ---- | ---- |
+| spark.sql.dataSketches.quantiles.defaultImpl | REQ | A default implementation used in quantile estimation functions. |
+| spark.sql.dataSketches.quantiles.kll.k | 200 | Specifies the parameter `k` for the quantile sketch implementation named `KLL`, `KllFloatsSketch`. |
+| spark.sql.dataSketches.quantiles.req.k | 12 | Specifies the parameter `k` for the quantile sketch implementation named `REQ`, `ReqSketch`. |
+
 ## Frequent Item Sketches
 
 A class of “Heavy Hitters” algorithms enables you to approximately identify the “heaviest”
@@ -144,6 +152,12 @@ only showing top 3 rows
 +----------------------------------+--------+
 ```
 
+### Configurations
+
+| Property Name | Default | Meaning |
+| ---- | ---- | ---- |
+| spark.sql.dataSketches.freqItems.maxMapSize | 1024 | Specifies the physical size of the internal hash map managed by this sketch and must be a power of 2. The maximum capacity of this internal hash map is 0.75 times * maxMapSize. Both the ultimate accuracy and size of this sketch are functions of maxMapSize. |
+
 ## Distinct Count Sketches
 
 Like the built-in distinct count estimation function (`approx_count_distinct`),
@@ -205,6 +219,12 @@ you can use similar functions to the other two sketch ones:
 |                               1063420|
 +--------------------------------------+
 ```
+
+### Configurations
+
+| Property Name | Default | Meaning |
+| ---- | ---- | ---- |
+| spark.sql.dataSketches.distinctCnt.lgK | 11 | Specifies the parameter `lgK` for the distinct count sketch implementation named `CpcSketch`. |
 
 ## TODO
 

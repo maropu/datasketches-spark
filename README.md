@@ -147,7 +147,7 @@ only showing top 3 rows
 ## Distinct Count Sketches
 
 Like the built-in distinct count estimation function (`approx_count_distinct`),
-this plugin enalbes you to use an alternative function (`approx_count_distinct`) to estimate
+this plugin enalbes you to use an alternative function (`approx_count_distinct_ex`) to estimate
 the distinct number of an input column in a more precise way:
 
 ```

@@ -101,7 +101,7 @@ case class FreqItemSketches(
   override def nullable: Boolean = true
 
   override lazy val dataType: DataType = {
-    ArrayType(StructType(Seq(StructField("item", StringType), StructField("estimate", LongType))))
+    ArrayType(StructType(Seq(StructField("item", StringType), StructField("estimated", LongType))))
   }
 
   override def inputTypes: Seq[AbstractDataType] = StringType :: Nil
@@ -248,7 +248,7 @@ case class FreqItemFromSketchState(child: Expression)
   override def prettyName: String = "approx_freqitems_estimate"
 
   override lazy val dataType: DataType = {
-    ArrayType(StructType(Seq(StructField("item", StringType), StructField("estimate", LongType))))
+    ArrayType(StructType(Seq(StructField("item", StringType), StructField("estimated", LongType))))
   }
 
   override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType)

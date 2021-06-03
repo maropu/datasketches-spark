@@ -42,7 +42,7 @@
     <scala.version>2.12.10</scala.version>
     <scala.binary.version>2.12</scala.binary.version>
     <datasketches.version>2.0.0</datasketches.version>
-    <spark.version>3.1.1</spark.version>
+    <spark.version>3.1.2</spark.version>
     <hadoop.version>2.7.4</hadoop.version>
     <hadoop.binary.version>2.7</hadoop.binary.version>
     <scalatest.version>3.2.3</scalatest.version>

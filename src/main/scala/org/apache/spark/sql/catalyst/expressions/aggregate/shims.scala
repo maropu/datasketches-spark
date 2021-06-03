@@ -45,7 +45,13 @@ object DataSketches {
     expression[FreqItemSketches]("approx_freqitems"),
     expression[SketchFreqItems]("approx_freqitems_accumulate"),
     expression[CombineFreqItemSketches]("approx_freqitems_combine"),
-    expression[FreqItemFromSketchState]("approx_freqitems_estimate")
+    expression[FreqItemFromSketchState]("approx_freqitems_estimate"),
+
+    // Distinct count sketches
+    expression[DistinctCntSketches]("approx_count_distinct_ex"),
+    expression[SketchDistinctCnt]("approx_count_distinct_accumulate"),
+    expression[CombineDistinctCntSketches]("approx_count_distinct_combine"),
+    expression[DistinctCntFromSketchState]("approx_count_distinct_estimate")
   )
 
   def install(): Unit = synchronized {

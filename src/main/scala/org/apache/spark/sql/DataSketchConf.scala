@@ -78,6 +78,13 @@ object DataSketchConf {
     .intConf
     .checkValue(_ > 0, "The parameter `maxMapSize` must be a power of 2.")
     .createWithDefault(1024)
+
+  val DISTINCT_COUNT_SKETCH_LGK = buildConf("spark.sql.dataSketches.distinctCnt.lgK")
+    .doc("Specifies the parameter `lgK` for the distinct count sketch implementation " +
+      "named `CpcSketch`.")
+    .intConf
+    .checkValue(_ > 0, "The parameter `lgK` must be positive.")
+    .createWithDefault(11)
 }
 
 class DataSketchConf(conf: SQLConf) {
@@ -92,6 +99,8 @@ class DataSketchConf(conf: SQLConf) {
   def quantileSketchKInREQ: Int = getConf(QUANTILE_SKETCH_REQ_K)
 
   def frequentItemSketchMaxMapSize: Int = getConf(FREQUENT_ITEM_SKETCH_MAX_MAP_SIZE)
+
+  def distinctCntSketchLgK: Int = getConf(DISTINCT_COUNT_SKETCH_LGK)
 
   /**
    * Return the value of configuration property for the given key. If the key is not set yet,

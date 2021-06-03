@@ -56,10 +56,6 @@ trait BaseFreqItemSketchAggregate extends TypedImperativeAggregate[ItemsSketch[S
     buffer
   }
 
-  override def eval(buffer: ItemsSketch[String]): Any = {
-    buffer.toByteArray(new ArrayOfStringsSerDe())
-  }
-
   override def serialize(obj: ItemsSketch[String]): Array[Byte] = {
     obj.toByteArray(new ArrayOfStringsSerDe())
   }
@@ -118,7 +114,6 @@ case class FreqItemSketches(
   }
 }
 
-// scalastyle:off line.size.limit
 @ExpressionDescription(
   usage = """
     _FUNC_(col) - Returns the internal representation of a frequent item sketch state
@@ -131,7 +126,6 @@ case class FreqItemSketches(
   """,
   group = "agg_funcs",
   since = "3.1.1")
-// scalastyle:on line.size.limit
 case class SketchFreqItems(
     child: Expression,
     mutableAggBufferOffset: Int = 0,

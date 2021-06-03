@@ -49,7 +49,7 @@ class SketchExpressionSuite extends SparkFunSuite with ExpressionEvalHelper {
       10.0)
   }
 
-  test("FreqItemFromSketchState - KLL") {
+  test("FreqItemFromSketchState") {
     // SELECT approx_freqitems_accumulate(c) FROM VALUES ('a'), ('a'), ('b'), ('c'), ('a') AS t(c);
     val bytes = Array[Byte](4, 1, 10, 3, 3, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3,
@@ -57,5 +57,15 @@ class SketchExpressionSuite extends SparkFunSuite with ExpressionEvalHelper {
     checkEvaluation(
       FreqItemFromSketchState(Literal(bytes, BinaryType)),
       Array(Row("a", 3L), Row("c", 1L), Row("b", 1L)))
+  }
+
+  test("DistinctCntFromSketchState") {
+    // SELECT approx_count_distinct_accumulate(col)
+    //   FROM VALUES ('a'), ('a'), ('b'), ('c'), ('a') AS tab(col);
+    val bytes = Array[Byte](4, 1, 16, 11, 0, 10, -52, -109, 3, 0, 0, 0, 2, 0, 0, 0, -66,
+      21, 24, 110, 3, 0, 0, 0)
+    checkEvaluation(
+      DistinctCntFromSketchState(Literal(bytes, BinaryType)),
+      3L)
   }
 }

@@ -294,4 +294,55 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
       checkAnswer(df, Row(Array(Row("b", 3), Row("a", 2), Row("c", 1))))
     }
   }
+
+  test("approximate distinct count tests") {
+    Seq("TINYINT", "SHORT", "INT", "LONG", "STRING").foreach { inputType =>
+      val df = _spark.sql(
+        s"""
+           |SELECT approx_count_distinct_ex(CAST(c AS $inputType))
+           |  FROM VALUES (1), (1), (2), (null), (2), (3) AS t(c);
+           """.stripMargin)
+      checkAnswer(df, Row(3L))
+    }
+  }
+
+  test("mergeable distinct count summary tests") {
+    import org.apache.spark.sql.functions._
+    import testImplicits._
+
+    withTempView("t") {
+      _spark.sql(
+        s"""
+           |CREATE TEMPORARY VIEW t AS SELECT * FROM VALUES
+           |  (date("2021-01-01"), 'a'),
+           |  (date("2021-01-01"), 'a'),
+           |  (date("2021-01-01"), 'a'),
+           |  (date("2021-01-02"), 'b'),
+           |  (date("2021-01-02"), 'a'),
+           |  (date("2021-01-02"), 'b'),
+           |  (date("2021-01-02"), null),
+           |  (date("2021-01-03"), 'b'),
+           |  (date("2021-01-03"), 'a'),
+           |  (date("2021-01-03"), 'c'),
+           |  (date("2021-01-04"), 'a')
+           |AS t(date, v);
+         """.stripMargin)
+
+      val summaries = _spark.table("t")
+        .groupBy(window($"date", "1 day"))
+        .agg(expr("approx_count_distinct_accumulate(v) AS summaries"))
+
+      assert(summaries.schema.toDDL ===
+        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP>,`summaries` BINARY")
+      checkAnswer(summaries.selectExpr("bit_length(summaries)"),
+        Seq(Row(160), Row(160), Row(160), Row(192)))
+
+      val merged = summaries
+        .where("window.start >= '2021-01-01' AND window.end <= '2021-01-04'")
+        .selectExpr("approx_count_distinct_combine(summaries) AS merged")
+
+      val df = merged.selectExpr("approx_count_distinct_estimate(merged)")
+      checkAnswer(df, Row(3L))
+    }
+  }
 }

@@ -6,7 +6,7 @@ Please visit [the main website](https://datasketches.apache.org/) for more DataS
 
 ## Quantile Sketches
 
-As the built-in percentile estimation function (`approx_percentile`),
+Like the built-in percentile estimation function (`approx_percentile`),
 this plugin enalbes you to use an alternative function (`approx_percentile_ex`) to estimate percentiles
 in a theoretically-meageable and very compact way:
 
@@ -110,7 +110,7 @@ or “most frequently occurring” items in an input column:
 +----------------------------------+--------+
 ```
 
-To pre-compute summaries for each group and estimate frequent items in some of them,
+To pre-compute summaries for each country and estimate frequent items in some of them,
 you can use similar functions to the quantile sketch ones:
 
 ```
@@ -142,6 +142,68 @@ only showing top 3 rows
 |LUNCH BAG  BLACK SKULL.           |1309    |
 |SPOTTY BUNTING                    |1307    |
 +----------------------------------+--------+
+```
+
+## Distinct Count Sketches
+
+Like the built-in distinct count estimation function (`approx_count_distinct`),
+this plugin enalbes you to use an alternative function (`approx_count_distinct`) to estimate
+the distinct number of an input column in a more precise way:
+
+```
+# This example uses the BitcoinHeist data set in the UCI Machine Learning Repository:
+# - https://archive.ics.uci.edu/ml/datasets/BitcoinHeistRansomwareAddressDataset
+>>> df = spark.read.format("csv").option("header", True).load("BitcoinHeistData.csv")
+>>> df.selectExpr("count(address)").show()
++--------------+                                                                
+|count(address)|
++--------------+
+|       2916697|
++--------------+
+
+>>> df.selectExpr("count(distinct address)", "approx_count_distinct(address)", "approx_count_distinct_ex(address)").show()
++-----------------------+------------------------------+---------------------------------+
+|count(DISTINCT address)|approx_count_distinct(address)|approx_count_distinct_ex(address)|
++-----------------------+------------------------------+---------------------------------+
+|                2631095|                       2422325|                          2645708|
++-----------------------+------------------------------+---------------------------------+
+```
+
+To pre-compute summaries for each year and estimate the distinct count of addresses over specific years,
+you can use similar functions to the other two sketch ones:
+
+```
+>>> import pyspark.sql.functions as f
+>>> summaries = df.groupBy("year").agg(expr("approx_count_distinct_accumulate(address) AS summaries"))
+>>> summaries.show()
++----+--------------------+                                                     
+|year|           summaries|
++----+--------------------+
+|2016|[06 01 10 0B 04 1...|
+|2012|[06 01 10 0B 04 1...|
+|2017|[06 01 10 0B 04 1...|
+|2014|[06 01 10 0B 04 1...|
+|2013|[06 01 10 0B 04 1...|
+|2018|[06 01 10 0B 04 1...|
+|2011|[06 01 10 0B 04 1...|
+|2015|[06 01 10 0B 04 1...|
++----+--------------------+
+
+# The correct distinct number of the `address` column
+>>> df.where("year IN ('2014', '2015', '2016')").selectExpr("count(distinct address)").show()
++-----------------------+                                                       
+|count(DISTINCT address)|
++-----------------------+
+|                1057136|
++-----------------------+
+
+>>> val df = summaries.where("year IN ('2014', '2015', '2016')").selectExpr("approx_count_distinct_combine(summaries) AS merged")
+>>> df.selectExpr("approx_count_distinct_estimate(merged)").show()
++--------------------------------------+                                        
+|approx_count_distinct_estimate(merged)|
++--------------------------------------+
+|                               1063420|
++--------------------------------------+
 ```
 
 ## TODO

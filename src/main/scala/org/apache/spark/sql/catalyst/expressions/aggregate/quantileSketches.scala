@@ -366,7 +366,6 @@ case class ReqSketch(
     copy(inputAggBufferOffset = newInputAggBufferOffset)
 }
 
-// scalastyle:off line.size.limit
 @ExpressionDescription(
   usage = """
     _FUNC_(col) - Returns the internal representation of a percentile sketch state
@@ -380,7 +379,6 @@ case class ReqSketch(
   """,
   group = "agg_funcs",
   since = "3.1.1")
-// scalastyle:on line.size.limit
 case class SketchQuantile(
     child: Expression,
     mutableAggBufferOffset: Int,

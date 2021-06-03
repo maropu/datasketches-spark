@@ -27,7 +27,7 @@
 
   <groupId>org.apache.spark</groupId>
   <artifactId>datasketches-spark_2.12</artifactId>
-  <version>0.1.0-spark3.1-SNAPSHOT</version>
+  <version>0.1.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>DataSketches Function Adaptors for Apache Spark</name>
 
@@ -43,6 +43,7 @@
     <scala.binary.version>2.12</scala.binary.version>
     <datasketches.version>2.0.0</datasketches.version>
     <spark.version>3.1.2</spark.version>
+    <spark.binary.version>3.1</spark.binary.version>
     <hadoop.version>2.7.4</hadoop.version>
     <hadoop.binary.version>2.7</hadoop.binary.version>
     <scalatest.version>3.2.3</scalatest.version>
@@ -127,7 +128,7 @@
   <build>
     <directory>target</directory>
     <outputDirectory>target/scala-${scala.binary.version}/classes</outputDirectory>
-    <finalName>${project.artifactId}_${spark.version}-${project.version}</finalName>
+    <finalName>${project.artifactId}_spark${spark.binary.version}-${project.version}</finalName>
     <testOutputDirectory>target/scala-${scala.binary.version}/test-classes</testOutputDirectory>
     <sourceDirectory>src/main/scala</sourceDirectory>
     <testSourceDirectory>src/test/scala</testSourceDirectory>
@@ -421,7 +422,7 @@
           </execution>
         </executions>
         <configuration>
-          <finalName>${project.artifactId}_${spark.version}-${project.version}</finalName>
+          <finalName>${project.artifactId}_spark${spark.binary.version}-${project.version}</finalName>
           <outputDirectory>${project.parent.build.directory}</outputDirectory>
         </configuration>
       </plugin>
@@ -437,7 +438,7 @@
               <goal>shade</goal>
             </goals>
             <configuration>
-              <finalName>${project.artifactId}_${spark.version}-${project.version}-with-dependencies</finalName>
+              <finalName>${project.artifactId}_spark${spark.binary.version}-${project.version}-with-dependencies</finalName>
               <outputDirectory>${project.parent.build.directory}</outputDirectory>
               <minimizeJar>false</minimizeJar>
               <createDependencyReducedPom>false</createDependencyReducedPom>

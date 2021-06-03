@@ -22,7 +22,7 @@ get_package_variables_from_pom() {
   PACKAGE_NAME=`grep "<project.package.name>" "${_pom_file}" | head -n1 | awk -F '[<>]' '{print $3}'`
   PACKAGE_VERSION=`grep "<version>" "${_pom_file}" | head -n2 | tail -n1 | awk -F '[<>]' '{print $3}'`
   SCALA_BINARY_VERSION=`grep "<scala.binary.version>" "${_pom_file}" | head -n1 | awk -F '[<>]' '{print $3}'`
-  SPARK_VERSION=`grep "<spark.version>" "${_pom_file}" | head -n1 | awk -F '[<>]' '{print $3}'`
-  PACKAGE_JAR_NAME="${PACKAGE_NAME}_${SCALA_BINARY_VERSION}_${SPARK_VERSION}-${PACKAGE_VERSION}-with-dependencies.jar"
+  SPARK_BINARY_VERSION=`grep "<spark.binary.version>" "${_pom_file}" | head -n1 | awk -F '[<>]' '{print $3}'`
+  PACKAGE_JAR_NAME="${PACKAGE_NAME}_${SCALA_BINARY_VERSION}_spark${SPARK_BINARY_VERSION}-${PACKAGE_VERSION}-with-dependencies.jar"
 }
 

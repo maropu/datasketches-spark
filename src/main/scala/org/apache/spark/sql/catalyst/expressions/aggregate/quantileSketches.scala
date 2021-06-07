@@ -71,7 +71,6 @@ object QuantileSketch {
 }
 
 trait BaseQuantileSketchImpl {
-  def name: String
   def impl: AnyRef
   def isEmpty: Boolean
   def update(v: Float): Unit
@@ -82,7 +81,6 @@ trait BaseQuantileSketchImpl {
 }
 
 class KllFloatsSketchImpl(_impl: jKllFloatsSketch) extends BaseQuantileSketchImpl {
-  override def name: String = "kll"
   override def impl: AnyRef = _impl
   override def isEmpty: Boolean = _impl.isEmpty
   override def update(v: Float): Unit = _impl.update(v)
@@ -99,7 +97,6 @@ class KllFloatsSketchImpl(_impl: jKllFloatsSketch) extends BaseQuantileSketchImp
 }
 
 class ReqSketchImpl(_impl: jReqSketch) extends BaseQuantileSketchImpl {
-  override def name: String = "req"
   override def impl: AnyRef = _impl
   override def isEmpty: Boolean = _impl.isEmpty
   override def update(v: Float): Unit = _impl.update(v)

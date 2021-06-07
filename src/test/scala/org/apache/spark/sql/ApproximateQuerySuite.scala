@@ -255,6 +255,17 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
     checkAnswer(df, Row(Array(Row("a", 3), Row("c", 1), Row("b", 1))))
   }
 
+  test("approximate frequent items tests - integral types") {
+    Seq("TINYINT", "SHORT", "INT", "LONG").foreach { inputType =>
+      val df = _spark.sql(
+        s"""
+           |SELECT approx_freqitems(CAST(c AS $inputType))
+           |  FROM VALUES (1), (1), (2), (null), (3), (1) AS t(c);
+         """.stripMargin)
+      checkAnswer(df, Row(Array(Row(1, 3), Row(2, 1), Row(3, 1))))
+    }
+  }
+
   test("mergeable frequent items summary tests") {
     import org.apache.spark.sql.functions._
     import testImplicits._

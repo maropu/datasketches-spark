@@ -20,7 +20,7 @@ package org.apache.spark.sql.catalyst.expressions.aggregate
 import scala.util.control.NonFatal
 
 import org.apache.datasketches.ArrayOfStringsSerDe
-import org.apache.datasketches.frequencies.{ErrorType, ItemsSketch}
+import org.apache.datasketches.frequencies.{ErrorType, ItemsSketch, LongsSketch}
 import org.apache.datasketches.memory.Memory
 
 import org.apache.spark.internal.Logging
@@ -34,34 +34,98 @@ import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
-trait BaseFreqItemSketchAggregate extends TypedImperativeAggregate[ItemsSketch[String]] {
+object FreqSketch {
 
-  override def createAggregationBuffer(): ItemsSketch[String] = {
-    new ItemsSketch[String](SQLConf.get.frequentItemSketchMaxMapSize)
+  def apply(dataType: DataType): BaseFreqSketchImpl = {
+    val maxMapSize = SQLConf.get.frequentItemSketchMaxMapSize
+    dataType match {
+      case StringType => new StringFreqSketchImpl(new ItemsSketch[String](maxMapSize))
+      case LongType => new LongFreqSketchImpl(new LongsSketch(maxMapSize))
+      case t => throw new IllegalStateException(s"Unknown input type: $t")
+    }
+  }
+
+  def apply(bytes: Array[Byte], dataType: DataType): BaseFreqSketchImpl = dataType match {
+    case StringType =>
+      val impl = ItemsSketch.getInstance(Memory.wrap(bytes), new ArrayOfStringsSerDe())
+      new StringFreqSketchImpl(impl)
+    case LongType =>
+      val impl = LongsSketch.getInstance(Memory.wrap(bytes))
+      new LongFreqSketchImpl(impl)
+    case t =>
+      throw new IllegalStateException(s"Unknown input type: $t")
+  }
+}
+
+trait BaseFreqSketchImpl {
+  def impl: AnyRef
+  def isEmpty: Boolean
+  def update(v: Any): Unit
+  def merge(other: BaseFreqSketchImpl): Unit
+  def getFrequentItems(): Array[(Any, Long)]
+  def serializeTo(): Array[Byte]
+}
+
+class StringFreqSketchImpl(_impl: ItemsSketch[String]) extends BaseFreqSketchImpl {
+  override def impl: AnyRef = _impl
+  override def isEmpty: Boolean = _impl.isEmpty
+  override def update(v: Any): Unit = _impl.update(v.asInstanceOf[UTF8String].toString)
+  override def merge(other: BaseFreqSketchImpl): Unit =
+    _impl.merge(other.impl.asInstanceOf[ItemsSketch[String]])
+  def getFrequentItems(): Array[(Any, Long)] = {
+    _impl.getFrequentItems(ErrorType.NO_FALSE_POSITIVES).map { i =>
+      (i.getItem, i.getEstimate)
+    }
+  }
+  override def serializeTo(): Array[Byte] = {
+    _impl.toByteArray(new ArrayOfStringsSerDe())
+  }
+}
+
+class LongFreqSketchImpl(_impl: LongsSketch) extends BaseFreqSketchImpl {
+  override def impl: AnyRef = _impl
+  override def isEmpty: Boolean = _impl.isEmpty
+  override def update(v: Any): Unit = _impl.update(v.asInstanceOf[Long])
+  override def merge(other: BaseFreqSketchImpl): Unit =
+    _impl.merge(other.impl.asInstanceOf[LongsSketch])
+  def getFrequentItems(): Array[(Any, Long)] = {
+    _impl.getFrequentItems(ErrorType.NO_FALSE_POSITIVES).map { i =>
+      (i.getItem, i.getEstimate)
+    }
+  }
+  override def serializeTo(): Array[Byte] = {
+    _impl.toByteArray()
+  }
+}
+
+trait BaseFreqItemSketchAggregate extends TypedImperativeAggregate[BaseFreqSketchImpl] {
+
+  override def createAggregationBuffer(): BaseFreqSketchImpl = {
+    FreqSketch(children.head.dataType)
   }
 
   override def update(
-      buffer: ItemsSketch[String],
-      input: InternalRow): ItemsSketch[String] = {
+      buffer: BaseFreqSketchImpl,
+      input: InternalRow): BaseFreqSketchImpl = {
     val value = children.head.eval(input)
     if (value != null) {
-      buffer.update(value.asInstanceOf[UTF8String].toString)
+      buffer.update(value)
     }
     buffer
   }
 
-  override def merge(buffer: ItemsSketch[String], other: ItemsSketch[String])
-      : ItemsSketch[String] = {
+  override def merge(buffer: BaseFreqSketchImpl, other: BaseFreqSketchImpl)
+      : BaseFreqSketchImpl = {
     buffer.merge(other)
     buffer
   }
 
-  override def serialize(obj: ItemsSketch[String]): Array[Byte] = {
-    obj.toByteArray(new ArrayOfStringsSerDe())
+  override def serialize(obj: BaseFreqSketchImpl): Array[Byte] = {
+    obj.serializeTo()
   }
 
-  override def deserialize(bytes: Array[Byte]): ItemsSketch[String] = {
-    ItemsSketch.getInstance(Memory.wrap(bytes), new ArrayOfStringsSerDe())
+  override def deserialize(bytes: Array[Byte]): BaseFreqSketchImpl = {
+    FreqSketch(bytes, children.head.dataType)
   }
 }
 
@@ -97,18 +161,29 @@ case class FreqItemSketches(
 
   override def children: Seq[Expression] = child :: Nil
 
+  private lazy val inputType: DataType = child.dataType
+
   // Returns null for empty inputs
   override def nullable: Boolean = true
 
   override lazy val dataType: DataType = {
-    ArrayType(StructType(Seq(StructField("item", StringType), StructField("estimated", LongType))))
+    ArrayType(StructType(Seq(StructField("item", inputType), StructField("estimated", LongType))))
   }
 
-  override def inputTypes: Seq[AbstractDataType] = StringType :: Nil
+  override def inputTypes: Seq[AbstractDataType] = TypeCollection(LongType, StringType) :: Nil
 
-  override def eval(buffer: ItemsSketch[String]): Any = {
-    val freqItems = buffer.getFrequentItems(ErrorType.NO_FALSE_POSITIVES).map { i =>
-      InternalRow(UTF8String.fromString(i.getItem), i.getEstimate)
+  private lazy val generateOutput = inputType match {
+    case StringType => (v: Any) => UTF8String.fromString(v.toString)
+    case ByteType => (v: Any) => v.asInstanceOf[Long].toByte
+    case ShortType => (v: Any) => v.asInstanceOf[Long].toShort
+    case IntegerType => (v: Any) => v.asInstanceOf[Long].toInt
+    case LongType => (v: Any) => v
+    case t => throw new IllegalStateException(s"Unknown input type: $t")
+  }
+
+  override def eval(buffer: BaseFreqSketchImpl): Any = {
+    val freqItems = buffer.getFrequentItems().map { case (item, estimate) =>
+      InternalRow(generateOutput(item), estimate)
     }
     new GenericArrayData(freqItems)
   }
@@ -144,6 +219,10 @@ case class SketchFreqItems(
   override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): SketchFreqItems =
     copy(inputAggBufferOffset = newInputAggBufferOffset)
 
+  override def createAggregationBuffer(): BaseFreqSketchImpl = {
+    FreqSketch(StringType)
+  }
+
   override def children: Seq[Expression] = child :: Nil
 
   // Returns null for empty inputs
@@ -153,8 +232,8 @@ case class SketchFreqItems(
 
   override def inputTypes: Seq[AbstractDataType] = StringType :: Nil
 
-  override def eval(buffer: ItemsSketch[String]): Any = {
-    buffer.toByteArray(new ArrayOfStringsSerDe())
+  override def eval(buffer: BaseFreqSketchImpl): Any = {
+    buffer.serializeTo()
   }
 }
 
@@ -168,7 +247,7 @@ case class CombineFreqItemSketches(
     child: Expression,
     mutableAggBufferOffset: Int,
     inputAggBufferOffset: Int)
-  extends TypedImperativeAggregate[ItemsSketch[String]]
+  extends TypedImperativeAggregate[BaseFreqSketchImpl]
   with ImplicitCastInputTypes
   with Logging {
 
@@ -197,41 +276,41 @@ case class CombineFreqItemSketches(
 
   override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType)
 
-  override def createAggregationBuffer(): ItemsSketch[String] = {
-    new ItemsSketch[String](SQLConf.get.frequentItemSketchMaxMapSize)
+  override def createAggregationBuffer(): BaseFreqSketchImpl = {
+    FreqSketch(StringType)
   }
 
   override def update(
-      buffer: ItemsSketch[String],
-      input: InternalRow): ItemsSketch[String] = {
+      buffer: BaseFreqSketchImpl,
+      input: InternalRow): BaseFreqSketchImpl = {
     try {
       val bytes = child.eval(input).asInstanceOf[Array[Byte]]
-      buffer.merge(ItemsSketch.getInstance(Memory.wrap(bytes), new ArrayOfStringsSerDe()))
+      buffer.merge(FreqSketch(bytes, StringType))
     } catch {
       case e @ NonFatal(_) =>
         logWarning("Illegal input bytes found, so cannot update " +
-          s"an immediate ${classOf[ItemsSketch[_]].getSimpleName} sketch data.")
+          s"an immediate ${buffer.impl.getClass.getSimpleName} sketch data.")
         throw e
     }
     buffer
   }
 
-  override def merge(buffer: ItemsSketch[String], other: ItemsSketch[String])
-      : ItemsSketch[String] = {
+  override def merge(buffer: BaseFreqSketchImpl, other: BaseFreqSketchImpl)
+      : BaseFreqSketchImpl = {
     buffer.merge(other)
     buffer
   }
 
-  override def eval(buffer: ItemsSketch[String]): Any = {
-    buffer.toByteArray(new ArrayOfStringsSerDe())
+  override def eval(buffer: BaseFreqSketchImpl): Any = {
+    buffer.serializeTo()
   }
 
-  override def serialize(obj: ItemsSketch[String]): Array[Byte] = {
-    obj.toByteArray(new ArrayOfStringsSerDe())
+  override def serialize(obj: BaseFreqSketchImpl): Array[Byte] = {
+    obj.serializeTo()
   }
 
-  override def deserialize(bytes: Array[Byte]): ItemsSketch[String] = {
-    ItemsSketch.getInstance(Memory.wrap(bytes), new ArrayOfStringsSerDe())
+  override def deserialize(bytes: Array[Byte]): BaseFreqSketchImpl = {
+    FreqSketch(bytes, StringType)
   }
 }
 
@@ -256,10 +335,10 @@ case class FreqItemFromSketchState(child: Expression)
   // Returns null for empty inputs
   override def nullable: Boolean = true
 
-  private def getFreqItems(buffer: ItemsSketch[String]): Any = {
+  private def getFreqItems(buffer: BaseFreqSketchImpl): Any = {
     if (!buffer.isEmpty) {
-      val freqItems = buffer.getFrequentItems(ErrorType.NO_FALSE_POSITIVES).map { i =>
-        InternalRow(UTF8String.fromString(i.getItem), i.getEstimate)
+      val freqItems = buffer.getFrequentItems().map { case (item, estimate) =>
+        InternalRow(UTF8String.fromString(item.asInstanceOf[String]), estimate)
       }
       new GenericArrayData(freqItems)
     } else {
@@ -269,8 +348,7 @@ case class FreqItemFromSketchState(child: Expression)
 
   @transient private[this] lazy val getOutputFreqItems = {
     (ar: Any) => try {
-      val bytes = ar.asInstanceOf[Array[Byte]]
-      getFreqItems(ItemsSketch.getInstance(Memory.wrap(bytes), new ArrayOfStringsSerDe()))
+      getFreqItems(FreqSketch(ar.asInstanceOf[Array[Byte]], StringType))
     } catch {
       case NonFatal(_) =>
         logWarning("Illegal input bytes found, so cannot update " +

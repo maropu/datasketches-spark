@@ -70,6 +70,13 @@ object DataSketchConf {
     .checkValue(_ > 0, "The parameter `k` must be positive.")
     .createWithDefault(12)
 
+  val QUANTILE_SKETCH_MERGEABLE_K = buildConf("spark.sql.dataSketches.quantiles.mergeable.k")
+    .doc("Specifies the parameter `k` for the quantile sketch implementation " +
+      "named `MERGEABLE`, `DoubleSketch`.")
+    .intConf
+    .checkValue(_ > 0, "The parameter `k` must be positive.")
+    .createWithDefault(128)
+
   val FREQUENT_ITEM_SKETCH_MAX_MAP_SIZE = buildConf("spark.sql.dataSketches.freqItems.maxMapSize")
     .doc("Specifies the physical size of the internal hash map managed by this sketch and " +
       "must be a power of 2. The maximum capacity of this internal hash map is " +
@@ -94,9 +101,11 @@ class DataSketchConf(conf: SQLConf) {
 
   def quantileSketchType: String = getConf(QUANTILE_SKETCH_TYPE)
 
-  def quantileSketchKInKLL: Int = getConf(QUANTILE_SKETCH_KLL_K)
+  def quantileSketchKInKll: Int = getConf(QUANTILE_SKETCH_KLL_K)
 
-  def quantileSketchKInREQ: Int = getConf(QUANTILE_SKETCH_REQ_K)
+  def quantileSketchKInReq: Int = getConf(QUANTILE_SKETCH_REQ_K)
+
+  def quantileSketchKInMergeable: Int = getConf(QUANTILE_SKETCH_MERGEABLE_K)
 
   def frequentItemSketchMaxMapSize: Int = getConf(FREQUENT_ITEM_SKETCH_MAX_MAP_SIZE)
 

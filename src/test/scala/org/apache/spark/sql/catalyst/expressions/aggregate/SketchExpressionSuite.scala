@@ -49,6 +49,19 @@ class SketchExpressionSuite extends SparkFunSuite with ExpressionEvalHelper {
       10.0)
   }
 
+  test("QuantileFromSketchState - MERGEABLE") {
+    // SELECT approx_percentile_accumulate(c) FROM VALUES (0), (1), (2), (10) AS t(c);
+    val bytes = Array[Byte](2, 3, 8, 0, -128, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 36, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, -16, 63, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 36, 64)
+    checkEvaluation(
+      QuantileFromSketchState(
+        Literal(bytes, BinaryType),
+        Literal(0.95, DoubleType),
+        "MERGEABLE"),
+      10.0)
+  }
+
   test("FreqItemFromSketchState") {
     // SELECT approx_freqitems_accumulate(c) FROM VALUES ('a'), ('a'), ('b'), ('c'), ('a') AS t(c);
     val bytes = Array[Byte](4, 1, 10, 3, 3, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0,

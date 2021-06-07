@@ -108,6 +108,7 @@ scala> df.where("Date between '2007-06-01' and '2010-01-01'").selectExpr("percen
 | spark.sql.dataSketches.quantiles.defaultImpl | REQ | A default implementation used in quantile estimation functions. |
 | spark.sql.dataSketches.quantiles.kll.k | 200 | Specifies the parameter `k` for the quantile sketch implementation named `KLL`, `KllFloatsSketch`. |
 | spark.sql.dataSketches.quantiles.req.k | 12 | Specifies the parameter `k` for the quantile sketch implementation named `REQ`, `ReqSketch`. |
+| spark.sql.dataSketches.quantiles.mergeable.k | 128 | Specifies the parameter `k` for the quantile sketch implementation named `MERGEABLE`, `DoubleSketch`. |
 
 ## Frequent Item Sketches
 

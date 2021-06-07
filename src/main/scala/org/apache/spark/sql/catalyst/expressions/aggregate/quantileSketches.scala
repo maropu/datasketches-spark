@@ -23,6 +23,7 @@ import scala.util.control.NonFatal
 
 import org.apache.datasketches.kll.{KllFloatsSketch => jKllFloatsSketch}
 import org.apache.datasketches.memory.Memory
+import org.apache.datasketches.quantiles.{DoublesSketch => jDoublesSketch, DoublesUnion, UpdateDoublesSketch}
 import org.apache.datasketches.req.{ReqSketch => jReqSketch}
 
 import org.apache.spark.internal.Logging
@@ -40,20 +41,24 @@ import org.apache.spark.sql.types._
 object QuantileSketch {
 
   object ImplType extends Enumeration {
-    val KLL, REQ = Value
+    val KLL, REQ, MERGEABLE = Value
   }
 
   import ImplType._
 
   def apply(name: String): BaseQuantileSketchImpl = name.toUpperCase(Locale.ROOT) match {
     case tpe if tpe == KLL.toString =>
-      val k = SQLConf.get.quantileSketchKInKLL
+      val k = SQLConf.get.quantileSketchKInKll
       val impl = new jKllFloatsSketch(k)
       new KllFloatsSketchImpl(impl)
     case tpe if tpe == REQ.toString =>
-      val k = SQLConf.get.quantileSketchKInREQ
+      val k = SQLConf.get.quantileSketchKInReq
       val impl = jReqSketch.builder().setK(k).build()
       new ReqSketchImpl(impl)
+    case tpe if tpe == MERGEABLE.toString =>
+      val k = SQLConf.get.quantileSketchKInMergeable
+      val impl = jDoublesSketch.builder().setK(k).build()
+      new MergeableSketchImpl(impl)
     case _ => throw new IllegalStateException(s"Unknown percentile sketch type: $name")
   }
 
@@ -65,6 +70,9 @@ object QuantileSketch {
       case tpe if tpe == REQ.toString =>
         val impl = jReqSketch.heapify(Memory.wrap(bytes))
         new ReqSketchImpl(impl)
+      case tpe if tpe == MERGEABLE.toString =>
+        val impl = UpdateDoublesSketch.heapify(Memory.wrap(bytes))
+        new MergeableSketchImpl(impl)
       case _ => throw new IllegalStateException(s"Unknown percentile sketch type: $name")
     }
   }
@@ -75,7 +83,7 @@ trait BaseQuantileSketchImpl {
   def isEmpty: Boolean
   def update(v: Float): Unit
   def merge(other: BaseQuantileSketchImpl): Unit
-  def getQuantiles(fractions: Array[Double]): Array[Float]
+  def getQuantiles(fractions: Array[Double]): Array[Double]
   def getPMF(numSplits: Int): Array[Double]
   def serializeTo(): Array[Byte]
 }
@@ -86,8 +94,8 @@ class KllFloatsSketchImpl(_impl: jKllFloatsSketch) extends BaseQuantileSketchImp
   override def update(v: Float): Unit = _impl.update(v)
   override def merge(other: BaseQuantileSketchImpl): Unit =
     _impl.merge(other.impl.asInstanceOf[jKllFloatsSketch])
-  override def getQuantiles(fractions: Array[Double]): Array[Float] =
-    _impl.getQuantiles(fractions)
+  override def getQuantiles(fractions: Array[Double]): Array[Double] =
+    _impl.getQuantiles(fractions).map(_.toDouble)
   override def getPMF(numSplits: Int): Array[Double] = {
     val splitSize = (_impl.getMaxValue - _impl.getMinValue) / numSplits
     val splitPoints = (1 until numSplits).map(_ * splitSize).toArray
@@ -102,7 +110,27 @@ class ReqSketchImpl(_impl: jReqSketch) extends BaseQuantileSketchImpl {
   override def update(v: Float): Unit = _impl.update(v)
   override def merge(other: BaseQuantileSketchImpl): Unit =
     _impl.merge(other.impl.asInstanceOf[jReqSketch])
-  override def getQuantiles(fractions: Array[Double]): Array[Float] =
+  override def getQuantiles(fractions: Array[Double]): Array[Double] =
+    _impl.getQuantiles(fractions).map(_.toDouble)
+  override def getPMF(numSplits: Int): Array[Double] = {
+    val splitSize = (_impl.getMaxValue - _impl.getMinValue) / numSplits
+    val splitPoints = (1 until numSplits).map(_ * splitSize).toArray
+    _impl.getPMF(splitPoints)
+  }
+  override def serializeTo(): Array[Byte] = _impl.toByteArray
+}
+
+class MergeableSketchImpl(var _impl: UpdateDoublesSketch) extends BaseQuantileSketchImpl {
+  override def impl: AnyRef = _impl
+  override def isEmpty: Boolean = _impl.isEmpty
+  override def update(v: Float): Unit = _impl.update(v.toDouble)
+  override def merge(other: BaseQuantileSketchImpl): Unit = {
+    val union = DoublesUnion.builder().setMaxK(SQLConf.get.quantileSketchKInMergeable).build()
+    union.update(_impl)
+    union.update(other.impl.asInstanceOf[UpdateDoublesSketch])
+    _impl = union.getResult
+  }
+  override def getQuantiles(fractions: Array[Double]): Array[Double] =
     _impl.getQuantiles(fractions)
   override def getPMF(numSplits: Int): Array[Double] = {
     val splitSize = (_impl.getMaxValue - _impl.getMinValue) / numSplits
@@ -164,14 +192,14 @@ trait BasePercentileEstimation extends ImplicitCastInputTypes {
     }
   }
 
-  protected def createOutputConvertFunc(): Float => Any = children.head.dataType match {
-    case ByteType => (v: Float) => v.toByte
-    case ShortType => (v: Float) => v.toShort
-    case IntegerType => (v: Float) => v.toInt
-    case LongType => (v: Float) => v.toLong
-    case FloatType => (v: Float) => v
-    case DoubleType => (v: Float) => v.toDouble
-    case DecimalType.Fixed(p, s) => (v: Float) => Decimal(v).changePrecision(p, s)
+  protected def createOutputConvertFunc(): Double => Any = children.head.dataType match {
+    case ByteType => (v: Double) => v.toByte
+    case ShortType => (v: Double) => v.toShort
+    case IntegerType => (v: Double) => v.toInt
+    case LongType => (v: Double) => v.toLong
+    case DoubleType => (v: Double) => v.toFloat
+    case DoubleType => (v: Double) => v
+    case DecimalType.Fixed(p, s) => (v: Double) => Decimal(v).changePrecision(p, s)
     case t => throw new IllegalStateException(s"Unexpected data type ${t.catalogString}")
   }
 
@@ -365,6 +393,42 @@ case class ReqSketch(
 
 @ExpressionDescription(
   usage = """
+    _FUNC_(col, percentage) - Returns the approximate `percentile` of the numeric
+      column `col` by using a relative error quantile (REQ) sketch that provides extremely
+      high accuracy at a chosen end of the rank domain. The value of percentage must be
+      between 0.0 and 1.0. When `percentage` is an array, each value of the percentage array
+      must be between 0.0 and 1.0. In this case, returns the approximate percentile array
+      of column `col` at the given percentage array.
+  """,
+  examples = """
+    Examples:
+      > SELECT _FUNC_(col, array(0.5, 0.4, 0.1)) FROM VALUES (0), (1), (2), (10) AS tab(col);
+       [2.0,1.0,0.0]
+      > SELECT _FUNC_(col, 0.5) FROM VALUES (0), (6), (7), (9), (10) AS tab(col);
+       7.0
+  """,
+  group = "agg_funcs",
+  since = "3.1.1")
+case class MergeableSketch(
+    child: Expression,
+    percentageExpression: Expression,
+    mutableAggBufferOffset: Int = 0,
+    inputAggBufferOffset: Int = 0) extends BaseQuantileSketch {
+
+  def this(child: Expression, percentageExpression: Expression) = {
+    this(child, percentageExpression, 0, 0)
+  }
+
+  override def implName: String = QuantileSketch.ImplType.MERGEABLE.toString
+  override def prettyName: String = "approx_percentile_mergeable"
+  override def withNewMutableAggBufferOffset(newMutableAggBufferOffset: Int): MergeableSketch =
+    copy(mutableAggBufferOffset = newMutableAggBufferOffset)
+  override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): MergeableSketch =
+    copy(inputAggBufferOffset = newInputAggBufferOffset)
+}
+
+@ExpressionDescription(
+  usage = """
     _FUNC_(col) - Returns the internal representation of a percentile sketch state
       at the end of aggregation. You can change the percentile sketch algorithm
       via `spark.sql.dataSketches.quantiles.defaultImpl`.
@@ -519,9 +583,7 @@ case class QuantileFromSketchState(
     case _ => DoubleType
   }
 
-  override protected def createOutputConvertFunc(): Float => Any = {
-    (v: Float) => v.toDouble
-  }
+  override protected def createOutputConvertFunc(): Double => Any = (v: Double) => v
 
   override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType, inputPercentageType)
 

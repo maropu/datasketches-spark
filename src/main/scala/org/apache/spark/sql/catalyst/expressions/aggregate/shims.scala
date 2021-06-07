@@ -36,6 +36,7 @@ object DataSketches {
     expression[QuantileSketch]("approx_percentile_ex"),
     expression[KllFloatsSketch]("approx_percentile_kll"),
     expression[ReqSketch]("approx_percentile_req"),
+    expression[MergeableSketch]("approx_percentile_mergeable"),
     expression[SketchQuantile]("approx_percentile_accumulate"),
     expression[CombineQuantileSketches]("approx_percentile_combine"),
     expression[QuantileFromSketchState]("approx_percentile_estimate"),

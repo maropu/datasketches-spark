@@ -111,8 +111,9 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
     }
   }
 
-  test("approximate percentile tests - KLL/REQ") {
-    Seq("approx_percentile_kll", "approx_percentile_req").foreach { f =>
+  test("approximate percentile tests - KLL/REQ/MERGEABLE") {
+    Seq("approx_percentile_kll", "approx_percentile_req", "approx_percentile_mergeable")
+        .foreach { f =>
       val df1 = _spark.sql(
         s"""
            |SELECT $f(c, array(0.5, 0.4, 0.1))

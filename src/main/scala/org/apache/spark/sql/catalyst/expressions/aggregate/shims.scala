@@ -49,7 +49,9 @@ object DataSketches {
     expression[FreqItemFromSketchState]("approx_freqitems_estimate"),
 
     // Distinct count sketches
-    expression[DistinctCntSketches]("approx_count_distinct_ex"),
+    expression[DistinctCntSketch]("approx_count_distinct_ex"),
+    expression[CpcSketch]("approx_count_distinct_cpc"),
+    expression[HllSketch]("approx_count_distinct_hll"),
     expression[SketchDistinctCnt]("approx_count_distinct_accumulate"),
     expression[CombineDistinctCntSketches]("approx_count_distinct_combine"),
     expression[DistinctCntFromSketchState]("approx_count_distinct_estimate")

@@ -93,12 +93,19 @@ object DataSketchConf {
     .checkValues(DistinctCntSketch.ImplType.values.map(_.toString))
     .createWithDefault(DistinctCntSketch.ImplType.CPC.toString)
 
-  val DISTINCT_COUNT_SKETCH_LGK = buildConf("spark.sql.dataSketches.distinctCnt.lgK")
+  val DISTINCT_COUNT_SKETCH_CPC_LGK = buildConf("spark.sql.dataSketches.distinctCnt.cpc.lgK")
     .doc("Specifies the parameter `lgK` for the distinct count sketch implementation " +
-      "named `CpcSketch`.")
+      "named `CPC`, `CpcSketch`.")
     .intConf
     .checkValue(_ > 0, "The parameter `lgK` must be positive.")
     .createWithDefault(11)
+
+  val DISTINCT_COUNT_SKETCH_HLL_LGK = buildConf("spark.sql.dataSketches.distinctCnt.hll.lgK")
+    .doc("Specifies the parameter `lgK` for the distinct count sketch implementation " +
+      "named `HLL`, `HllSketch`.")
+    .intConf
+    .checkValue(_ > 0, "The parameter `lgK` must be positive.")
+    .createWithDefault(12)
 }
 
 class DataSketchConf(conf: SQLConf) {
@@ -118,7 +125,9 @@ class DataSketchConf(conf: SQLConf) {
 
   def distinctCntSketchImpl: String = getConf(DISTINCT_COUNT_SKETCH_IMPL)
 
-  def distinctCntSketchLgK: Int = getConf(DISTINCT_COUNT_SKETCH_LGK)
+  def distinctCntSketchCpcLgK: Int = getConf(DISTINCT_COUNT_SKETCH_CPC_LGK)
+
+  def distinctCntSketchHllLgK: Int = getConf(DISTINCT_COUNT_SKETCH_HLL_LGK)
 
   /**
    * Return the value of configuration property for the given key. If the key is not set yet,

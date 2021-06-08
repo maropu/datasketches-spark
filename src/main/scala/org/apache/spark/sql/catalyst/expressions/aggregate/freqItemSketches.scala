@@ -140,7 +140,7 @@ trait BaseFreqItemSketchAggregate extends TypedImperativeAggregate[BaseFreqSketc
        [{a, 3}, {c, 1}, {b, 1}]
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class FreqItemSketches(
     child: Expression,
     mutableAggBufferOffset: Int = 0,
@@ -200,7 +200,7 @@ case class FreqItemSketches(
        04 01 0A 03 03 00 00 00 03 00 00 00 00 00 00 00 05 00 ... 61
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class SketchFreqItems(
     child: Expression,
     mutableAggBufferOffset: Int = 0,
@@ -242,7 +242,7 @@ case class SketchFreqItems(
     _FUNC_(col) - Combines (i.e. merges) multiple input sketch states into a single output state.
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class CombineFreqItemSketches(
     child: Expression,
     mutableAggBufferOffset: Int,
@@ -320,7 +320,7 @@ case class CombineFreqItemSketches(
       items from an input sketch state.
   """,
   // group = "math_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class FreqItemFromSketchState(child: Expression)
   extends UnaryExpression with ImplicitCastInputTypes with NullIntolerant with Logging {
 

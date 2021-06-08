@@ -22,6 +22,7 @@ import java.util.Locale
 import scala.util.control.NonFatal
 
 import org.apache.datasketches.cpc.{CpcSketch => jCpcSketch, CpcUnion}
+import org.apache.datasketches.hll.{HllSketch => jHllSketch, Union => HllUnion}
 import org.apache.datasketches.memory.Memory
 
 import org.apache.spark.internal.Logging
@@ -37,15 +38,18 @@ import org.apache.spark.unsafe.types.UTF8String
 object DistinctCntSketch {
 
   object ImplType extends Enumeration {
-    val CPC = Value
+    val CPC, HLL = Value
   }
 
   import ImplType._
 
   def apply(name: String): BaseDistinctCntSketchImpl = name.toUpperCase(Locale.ROOT) match {
     case tpe if tpe == CPC.toString =>
-      val impl = new jCpcSketch(SQLConf.get.distinctCntSketchLgK)
+      val impl = new jCpcSketch(SQLConf.get.distinctCntSketchCpcLgK)
       new CpcSketchImpl(impl)
+    case tpe if tpe == HLL.toString =>
+      val impl = new jHllSketch(SQLConf.get.distinctCntSketchHllLgK)
+      new HllSketchImpl(impl)
     case _ =>
       throw new IllegalStateException(s"Unknown distinct count sketch type: $name")
   }
@@ -54,6 +58,8 @@ object DistinctCntSketch {
     name.toUpperCase(Locale.ROOT) match {
       case tpe if tpe == CPC.toString =>
         new CpcSketchImpl(jCpcSketch.heapify(Memory.wrap(bytes)))
+      case tpe if tpe == HLL.toString =>
+        new HllSketchImpl(jHllSketch.heapify(Memory.wrap(bytes)))
       case _ =>
         throw new IllegalStateException(s"Unknown distinct count sketch type: $name")
     }
@@ -76,13 +82,28 @@ class CpcSketchImpl(var _impl: jCpcSketch) extends BaseDistinctCntSketchImpl {
   override def update(v: Long): Unit = _impl.update(v)
   override def update(v: String): Unit = _impl.update(v)
   override def merge(other: BaseDistinctCntSketchImpl): Unit = {
-    val union = new CpcUnion(SQLConf.get.distinctCntSketchLgK)
+    val union = new CpcUnion(SQLConf.get.distinctCntSketchCpcLgK)
     union.update(_impl)
     union.update(other.impl.asInstanceOf[jCpcSketch])
     _impl = union.getResult
   }
   def getEstimate(): Long = _impl.getEstimate().toLong
   override def serializeTo(): Array[Byte] = _impl.toByteArray
+}
+
+class HllSketchImpl(var _impl: jHllSketch) extends BaseDistinctCntSketchImpl {
+  override def impl: AnyRef = _impl
+  override def isEmpty: Boolean = _impl.isEmpty
+  override def update(v: Long): Unit = _impl.update(v)
+  override def update(v: String): Unit = _impl.update(v)
+  override def merge(other: BaseDistinctCntSketchImpl): Unit = {
+    val union = new HllUnion(SQLConf.get.distinctCntSketchHllLgK)
+    union.update(_impl)
+    union.update(other.impl.asInstanceOf[jHllSketch])
+    _impl = union.getResult
+  }
+  def getEstimate(): Long = _impl.getEstimate().toLong
+  override def serializeTo(): Array[Byte] = _impl.toUpdatableByteArray
 }
 
 trait BaseDistinctCntSketchAggregate extends TypedImperativeAggregate[BaseDistinctCntSketchImpl] {
@@ -128,6 +149,21 @@ trait BaseDistinctCntSketchAggregate extends TypedImperativeAggregate[BaseDistin
   }
 }
 
+abstract class BaseDistinctCntSketch
+  extends BaseDistinctCntSketchAggregate
+  with ImplicitCastInputTypes {
+
+  def child: Expression
+  override def children: Seq[Expression] = child :: Nil
+  // Returns null for empty inputs
+  override def nullable: Boolean = true
+  override lazy val dataType: DataType = LongType
+  override def inputTypes: Seq[AbstractDataType] = TypeCollection(StringType, LongType) :: Nil
+  override def eval(buffer: BaseDistinctCntSketchImpl): Any = {
+    buffer.getEstimate
+  }
+}
+
 @ExpressionDescription(
   usage = """
     _FUNC_(expr) - Returns the estimated cardinality by the sketch algorithm.
@@ -140,38 +176,78 @@ trait BaseDistinctCntSketchAggregate extends TypedImperativeAggregate[BaseDistin
        3
   """,
   group = "agg_funcs",
-  since = "3.1.1")
-case class DistinctCntSketches(
+  since = "3.1.2")
+case class DistinctCntSketch(
     child: Expression,
     mutableAggBufferOffset: Int = 0,
     inputAggBufferOffset: Int = 0,
-    implName: String)
-  extends BaseDistinctCntSketchAggregate with ImplicitCastInputTypes {
+    implName: String) extends BaseDistinctCntSketch {
 
   def this(child: Expression) = {
     this(child, 0, 0, SQLConf.get.distinctCntSketchImpl)
   }
 
   override def prettyName: String = "approx_count_distinct_ex"
-
-  override def withNewMutableAggBufferOffset(newMutableAggBufferOffset: Int): DistinctCntSketches =
+  override def withNewMutableAggBufferOffset(newMutableAggBufferOffset: Int): DistinctCntSketch =
     copy(mutableAggBufferOffset = newMutableAggBufferOffset)
-
-  override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): DistinctCntSketches =
+  override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): DistinctCntSketch =
     copy(inputAggBufferOffset = newInputAggBufferOffset)
+}
 
-  override def children: Seq[Expression] = child :: Nil
+@ExpressionDescription(
+  usage = """
+    _FUNC_(expr) - Returns the estimated cardinality by the CPC sketch algorithm.
+  """,
+  examples = """
+    Examples:
+      > SELECT _FUNC_(col1) FROM VALUES (1), (1), (2), (2), (3) tab(col1);
+       3
+  """,
+  group = "agg_funcs",
+  since = "3.1.2")
+case class CpcSketch(
+    child: Expression,
+    mutableAggBufferOffset: Int = 0,
+    inputAggBufferOffset: Int = 0) extends BaseDistinctCntSketch {
 
-  // Returns null for empty inputs
-  override def nullable: Boolean = true
-
-  override lazy val dataType: DataType = LongType
-
-  override def inputTypes: Seq[AbstractDataType] = TypeCollection(StringType, LongType) :: Nil
-
-  override def eval(buffer: BaseDistinctCntSketchImpl): Any = {
-    buffer.getEstimate
+  def this(child: Expression) = {
+    this(child, 0, 0)
   }
+
+  override def implName: String = DistinctCntSketch.ImplType.CPC.toString
+  override def prettyName: String = "approx_count_distinct_ex"
+  override def withNewMutableAggBufferOffset(newMutableAggBufferOffset: Int): CpcSketch =
+    copy(mutableAggBufferOffset = newMutableAggBufferOffset)
+  override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): CpcSketch =
+    copy(inputAggBufferOffset = newInputAggBufferOffset)
+}
+
+@ExpressionDescription(
+  usage = """
+    _FUNC_(expr) - Returns the estimated cardinality by the HLL sketch algorithm.
+  """,
+  examples = """
+    Examples:
+      > SELECT _FUNC_(col1) FROM VALUES (1), (1), (2), (2), (3) tab(col1);
+       3
+  """,
+  group = "agg_funcs",
+  since = "3.1.2")
+case class HllSketch(
+    child: Expression,
+    mutableAggBufferOffset: Int = 0,
+    inputAggBufferOffset: Int = 0) extends BaseDistinctCntSketch {
+
+  def this(child: Expression) = {
+    this(child, 0, 0)
+  }
+
+  override def implName: String = DistinctCntSketch.ImplType.CPC.toString
+  override def prettyName: String = "approx_count_distinct_ex"
+  override def withNewMutableAggBufferOffset(newMutableAggBufferOffset: Int): HllSketch =
+    copy(mutableAggBufferOffset = newMutableAggBufferOffset)
+  override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): HllSketch =
+    copy(inputAggBufferOffset = newInputAggBufferOffset)
 }
 
 @ExpressionDescription(
@@ -185,7 +261,7 @@ case class DistinctCntSketches(
        04 01 10 0B 00 0A CC 93 03 00 00 00 02 00 00 00 BE 15 18 6E 03 00 00 00
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class SketchDistinctCnt(
     child: Expression,
     mutableAggBufferOffset: Int = 0,
@@ -224,7 +300,7 @@ case class SketchDistinctCnt(
     _FUNC_(col) - Combines (i.e. merges) multiple input sketch states into a single output state.
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class CombineDistinctCntSketches(
     child: Expression,
     mutableAggBufferOffset: Int,
@@ -303,7 +379,7 @@ case class CombineDistinctCntSketches(
     _FUNC_(col) - Computes the approximate distinct count from an input sketch state.
   """,
   // group = "math_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class DistinctCntFromSketchState(child: Expression, implName: String)
   extends UnaryExpression with ImplicitCastInputTypes with NullIntolerant with Logging {
 

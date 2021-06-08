@@ -308,13 +308,21 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
   }
 
   test("approximate distinct count tests") {
-    Seq("TINYINT", "SHORT", "INT", "LONG", "STRING").foreach { inputType =>
-      val df = _spark.sql(
-        s"""
-           |SELECT approx_count_distinct_ex(CAST(c AS $inputType))
-           |  FROM VALUES (1), (1), (2), (null), (2), (3) AS t(c);
-           """.stripMargin)
-      checkAnswer(df, Row(3L))
+    Seq("approx_count_distinct_ex",
+      "approx_count_distinct_cpc",
+      "approx_count_distinct_hll").foreach { f =>
+      val df1 = _spark.sql(
+        s"SELECT $f(c) FROM VALUES ('a'), ('a'), ('b'), (null), ('b'), ('c') AS t(c);")
+      checkAnswer(df1, Row(3L))
+
+      Seq("TINYINT", "SHORT", "INT", "LONG", "STRING").foreach { inputType =>
+        val df2 = _spark.sql(
+          s"""
+             |SELECT $f(CAST(c AS $inputType))
+             |  FROM VALUES (1), (1), (2), (null), (2), (3) AS t(c);
+             """.stripMargin)
+        checkAnswer(df2, Row(3L))
+      }
     }
   }
 

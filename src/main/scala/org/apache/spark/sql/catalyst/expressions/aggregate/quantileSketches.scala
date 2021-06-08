@@ -300,7 +300,7 @@ abstract class BaseQuantileSketch
        7
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class QuantileSketch(
     child: Expression,
     percentageExpression: Expression,
@@ -336,7 +336,7 @@ case class QuantileSketch(
        7.0
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class KllFloatsSketch(
     child: Expression,
     percentageExpression: Expression,
@@ -372,7 +372,7 @@ case class KllFloatsSketch(
        7.0
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class ReqSketch(
     child: Expression,
     percentageExpression: Expression,
@@ -408,7 +408,7 @@ case class ReqSketch(
        7.0
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class MergeableSketch(
     child: Expression,
     percentageExpression: Expression,
@@ -439,7 +439,7 @@ case class MergeableSketch(
        02 01 11 38 0C 00 01 04 00 00 00 00 00 00 80 3F 00 00 00 40 00 00 20 41
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class SketchQuantile(
     child: Expression,
     mutableAggBufferOffset: Int,
@@ -479,7 +479,7 @@ case class SketchQuantile(
       `spark.sql.dataSketches.quantiles.defaultImpl` generates.
   """,
   group = "agg_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class CombineQuantileSketches(
     child: Expression,
     mutableAggBufferOffset: Int,
@@ -562,7 +562,7 @@ case class CombineQuantileSketches(
       by `spark.sql.dataSketches.quantiles.defaultImpl` generates.
   """,
   // group = "math_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class QuantileFromSketchState(
     child: Expression,
     percentageExpression: Expression,
@@ -634,7 +634,7 @@ case class QuantileFromSketchState(
       by `spark.sql.dataSketches.quantiles.defaultImpl` generates.
   """,
   // group = "math_funcs",
-  since = "3.1.1")
+  since = "3.1.2")
 case class PmfFromSketchState(
     child: Expression,
     numSplitExpr: Expression,

@@ -307,7 +307,8 @@ you can use similar functions to the other two sketch ones:
 | Property Name | Default | Meaning |
 | ---- | ---- | ---- |
 | spark.sql.dataSketches.distinctCnt.defaultImpl | CPC | A default implementation used in distinct count estimation functions. |
-| spark.sql.dataSketches.distinctCnt.lgK | 11 | Specifies the parameter `lgK` for the distinct count sketch implementation named `CpcSketch`. |
+| spark.sql.dataSketches.distinctCnt.cpc.lgK | 11 | Specifies the parameter `lgK` for the distinct count sketch implementation named `CPC`, `CpcSketch`. |
+| spark.sql.dataSketches.distinctCnt.hll.lgK | 12 | Specifies the parameter `lgK` for the distinct count sketch implementation named `HLL`, `HllSketch`. |
 
 ## TODO
 

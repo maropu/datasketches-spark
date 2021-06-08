@@ -45,10 +45,10 @@ object DistinctCntSketch {
 
   def apply(name: String): BaseDistinctCntSketchImpl = name.toUpperCase(Locale.ROOT) match {
     case tpe if tpe == CPC.toString =>
-      val impl = new jCpcSketch(SQLConf.get.distinctCntSketchCpcLgK)
+      val impl = new jCpcSketch(SQLConf.get.distinctCntSketchLgKInCpc)
       new CpcSketchImpl(impl)
     case tpe if tpe == HLL.toString =>
-      val impl = new jHllSketch(SQLConf.get.distinctCntSketchHllLgK)
+      val impl = new jHllSketch(SQLConf.get.distinctCntSketchLgKInHll)
       new HllSketchImpl(impl)
     case _ =>
       throw new IllegalStateException(s"Unknown distinct count sketch type: $name")
@@ -82,7 +82,7 @@ class CpcSketchImpl(var _impl: jCpcSketch) extends BaseDistinctCntSketchImpl {
   override def update(v: Long): Unit = _impl.update(v)
   override def update(v: String): Unit = _impl.update(v)
   override def merge(other: BaseDistinctCntSketchImpl): Unit = {
-    val union = new CpcUnion(SQLConf.get.distinctCntSketchCpcLgK)
+    val union = new CpcUnion(SQLConf.get.distinctCntSketchLgKInCpc)
     union.update(_impl)
     union.update(other.impl.asInstanceOf[jCpcSketch])
     _impl = union.getResult
@@ -97,7 +97,7 @@ class HllSketchImpl(var _impl: jHllSketch) extends BaseDistinctCntSketchImpl {
   override def update(v: Long): Unit = _impl.update(v)
   override def update(v: String): Unit = _impl.update(v)
   override def merge(other: BaseDistinctCntSketchImpl): Unit = {
-    val union = new HllUnion(SQLConf.get.distinctCntSketchHllLgK)
+    val union = new HllUnion(SQLConf.get.distinctCntSketchLgKInHll)
     union.update(_impl)
     union.update(other.impl.asInstanceOf[jHllSketch])
     _impl = union.getResult

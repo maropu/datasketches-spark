@@ -49,8 +49,8 @@ object DataSketchConf {
     }
   }
 
-  val QUANTILE_SKETCH_IMPL = buildConf("spark.sql.dataSketches.quantiles.defaultImpl")
-    .doc("A default implementation used in quantile estimation functions.")
+  val QUANTILE_SKETCH_IMPL = buildConf("spark.sql.dataSketches.quantiles.sketchImpl")
+    .doc("A sketch implementation used in quantile estimation functions.")
     .stringConf
     .transform(_.toUpperCase(Locale.ROOT))
     .checkValues(QuantileSketch.ImplType.values.map(_.toString))
@@ -86,8 +86,8 @@ object DataSketchConf {
     .checkValue(_ > 0, "The parameter `maxMapSize` must be a power of 2.")
     .createWithDefault(1024)
 
-  val DISTINCT_COUNT_SKETCH_IMPL = buildConf("spark.sql.dataSketches.distinctCnt.defaultImpl")
-    .doc("A default implementation used in distinct count estimation functions.")
+  val DISTINCT_COUNT_SKETCH_IMPL = buildConf("spark.sql.dataSketches.distinctCnt.sketchImpl")
+    .doc("A sketch implementation used in distinct count estimation functions.")
     .stringConf
     .transform(_.toUpperCase(Locale.ROOT))
     .checkValues(DistinctCntSketch.ImplType.values.map(_.toString))
@@ -125,9 +125,9 @@ class DataSketchConf(conf: SQLConf) {
 
   def distinctCntSketchImpl: String = getConf(DISTINCT_COUNT_SKETCH_IMPL)
 
-  def distinctCntSketchCpcLgK: Int = getConf(DISTINCT_COUNT_SKETCH_CPC_LGK)
+  def distinctCntSketchLgKInCpc: Int = getConf(DISTINCT_COUNT_SKETCH_CPC_LGK)
 
-  def distinctCntSketchHllLgK: Int = getConf(DISTINCT_COUNT_SKETCH_HLL_LGK)
+  def distinctCntSketchLgKInHll: Int = getConf(DISTINCT_COUNT_SKETCH_HLL_LGK)
 
   /**
    * Return the value of configuration property for the given key. If the key is not set yet,

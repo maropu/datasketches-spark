@@ -105,7 +105,7 @@ scala> df.where("Date between '2007-06-01' and '2010-01-01'").selectExpr("percen
 
 | Property Name | Default | Meaning |
 | ---- | ---- | ---- |
-| spark.sql.dataSketches.quantiles.defaultImpl | REQ | A default implementation used in quantile estimation functions. |
+| spark.sql.dataSketches.quantiles.sketchImpl | REQ | A sketch implementation used in quantile estimation functions. |
 | spark.sql.dataSketches.quantiles.kll.k | 200 | Specifies the parameter `k` for the quantile sketch implementation named `KLL`, `KllFloatsSketch`. |
 | spark.sql.dataSketches.quantiles.req.k | 12 | Specifies the parameter `k` for the quantile sketch implementation named `REQ`, `ReqSketch`. |
 | spark.sql.dataSketches.quantiles.mergeable.k | 128 | Specifies the parameter `k` for the quantile sketch implementation named `MERGEABLE`, `DoubleSketch`. |
@@ -306,7 +306,7 @@ you can use similar functions to the other two sketch ones:
 
 | Property Name | Default | Meaning |
 | ---- | ---- | ---- |
-| spark.sql.dataSketches.distinctCnt.defaultImpl | CPC | A default implementation used in distinct count estimation functions. |
+| spark.sql.dataSketches.distinctCnt.sketchImpl | CPC | A sketch implementation used in distinct count estimation functions. |
 | spark.sql.dataSketches.distinctCnt.cpc.lgK | 11 | Specifies the parameter `lgK` for the distinct count sketch implementation named `CPC`, `CpcSketch`. |
 | spark.sql.dataSketches.distinctCnt.hll.lgK | 12 | Specifies the parameter `lgK` for the distinct count sketch implementation named `HLL`, `HllSketch`. |
 

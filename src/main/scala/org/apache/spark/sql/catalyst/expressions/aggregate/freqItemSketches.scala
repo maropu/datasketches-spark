@@ -352,7 +352,7 @@ case class FreqItemFromSketchState(child: Expression)
     } catch {
       case NonFatal(_) =>
         logWarning("Illegal input bytes found, so cannot update " +
-          s"an immediate ${classOf[ItemsSketch[_]].getSimpleName} sketch data.")
+          s"an immediate ${FreqSketch(child.dataType).getClass.getSimpleName} sketch data.")
         null
     }
   }

@@ -78,7 +78,9 @@ class SketchExpressionSuite extends SparkFunSuite with ExpressionEvalHelper {
     val bytes = Array[Byte](4, 1, 16, 11, 0, 10, -52, -109, 3, 0, 0, 0, 2, 0, 0, 0, -66,
       21, 24, 110, 3, 0, 0, 0)
     checkEvaluation(
-      DistinctCntFromSketchState(Literal(bytes, BinaryType)),
+      DistinctCntFromSketchState(
+        Literal(bytes, BinaryType),
+        "CPC"),
       3L)
   }
 }

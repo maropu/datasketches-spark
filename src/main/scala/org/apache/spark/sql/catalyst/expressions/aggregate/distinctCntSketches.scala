@@ -17,9 +17,11 @@
 
 package org.apache.spark.sql.catalyst.expressions.aggregate
 
+import java.util.Locale
+
 import scala.util.control.NonFatal
 
-import org.apache.datasketches.cpc.{CpcSketch, CpcUnion}
+import org.apache.datasketches.cpc.{CpcSketch => jCpcSketch, CpcUnion}
 import org.apache.datasketches.memory.Memory
 
 import org.apache.spark.internal.Logging
@@ -32,23 +34,78 @@ import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
-trait BaseDistinctCntSketchAggregate extends TypedImperativeAggregate[CpcSketch] {
+object DistinctCntSketch {
 
-  override def createAggregationBuffer(): CpcSketch = {
-    new CpcSketch(SQLConf.get.distinctCntSketchLgK)
+  object ImplType extends Enumeration {
+    val CPC = Value
+  }
+
+  import ImplType._
+
+  def apply(name: String): BaseDistinctCntSketchImpl = name.toUpperCase(Locale.ROOT) match {
+    case tpe if tpe == CPC.toString =>
+      val impl = new jCpcSketch(SQLConf.get.distinctCntSketchLgK)
+      new CpcSketchImpl(impl)
+    case _ =>
+      throw new IllegalStateException(s"Unknown distinct count sketch type: $name")
+  }
+
+  def apply(name: String, bytes: Array[Byte]): BaseDistinctCntSketchImpl = {
+    name.toUpperCase(Locale.ROOT) match {
+      case tpe if tpe == CPC.toString =>
+        new CpcSketchImpl(jCpcSketch.heapify(Memory.wrap(bytes)))
+      case _ =>
+        throw new IllegalStateException(s"Unknown distinct count sketch type: $name")
+    }
+  }
+}
+
+trait BaseDistinctCntSketchImpl {
+  def impl: AnyRef
+  def isEmpty: Boolean
+  def update(v: Long): Unit
+  def update(v: String): Unit
+  def merge(other: BaseDistinctCntSketchImpl): Unit
+  def getEstimate(): Long
+  def serializeTo(): Array[Byte]
+}
+
+class CpcSketchImpl(var _impl: jCpcSketch) extends BaseDistinctCntSketchImpl {
+  override def impl: AnyRef = _impl
+  override def isEmpty: Boolean = _impl.isEmpty
+  override def update(v: Long): Unit = _impl.update(v)
+  override def update(v: String): Unit = _impl.update(v)
+  override def merge(other: BaseDistinctCntSketchImpl): Unit = {
+    val union = new CpcUnion(SQLConf.get.distinctCntSketchLgK)
+    union.update(_impl)
+    union.update(other.impl.asInstanceOf[jCpcSketch])
+    _impl = union.getResult
+  }
+  def getEstimate(): Long = _impl.getEstimate().toLong
+  override def serializeTo(): Array[Byte] = _impl.toByteArray
+}
+
+trait BaseDistinctCntSketchAggregate extends TypedImperativeAggregate[BaseDistinctCntSketchImpl] {
+
+  def implName: String
+
+  override def createAggregationBuffer(): BaseDistinctCntSketchImpl = {
+    DistinctCntSketch(implName)
   }
 
   private lazy val updateFunc = children.head.dataType match {
-    case LongType => (buffer: CpcSketch, v: Any) => {
+    case LongType => (buffer: BaseDistinctCntSketchImpl, v: Any) => {
       buffer.update(v.asInstanceOf[Long])
     }
-    case StringType => (buffer: CpcSketch, v: Any) => {
+    case StringType => (buffer: BaseDistinctCntSketchImpl, v: Any) => {
       buffer.update(v.asInstanceOf[UTF8String].toString)
     }
     case t => throw new IllegalStateException(s"Unexpected data type ${t.catalogString}")
   }
 
-  override def update(buffer: CpcSketch, input: InternalRow): CpcSketch = {
+  override def update(
+      buffer: BaseDistinctCntSketchImpl,
+      input: InternalRow): BaseDistinctCntSketchImpl = {
     val value = children.head.eval(input)
     if (value != null) {
       updateFunc(buffer, value)
@@ -56,26 +113,26 @@ trait BaseDistinctCntSketchAggregate extends TypedImperativeAggregate[CpcSketch]
     buffer
   }
 
-  override def merge(buffer: CpcSketch, other: CpcSketch)
-      : CpcSketch = {
-    val union = new CpcUnion(SQLConf.get.distinctCntSketchLgK)
-    union.update(buffer)
-    union.update(other)
-    union.getResult
+  override def merge(buffer: BaseDistinctCntSketchImpl, other: BaseDistinctCntSketchImpl)
+      : BaseDistinctCntSketchImpl = {
+    buffer.merge(other)
+    buffer
   }
 
-  override def serialize(obj: CpcSketch): Array[Byte] = {
-    obj.toByteArray()
+  override def serialize(obj: BaseDistinctCntSketchImpl): Array[Byte] = {
+    obj.serializeTo()
   }
 
-  override def deserialize(bytes: Array[Byte]): CpcSketch = {
-    CpcSketch.heapify(Memory.wrap(bytes))
+  override def deserialize(bytes: Array[Byte]): BaseDistinctCntSketchImpl = {
+    DistinctCntSketch(implName, bytes)
   }
 }
 
 @ExpressionDescription(
   usage = """
-    _FUNC_(expr) - Returns the estimated cardinality by CPC Sketch.
+    _FUNC_(expr) - Returns the estimated cardinality by the sketch algorithm.
+      You can change the internal distinct count sketch algorithm via
+      `spark.sql.dataSketches.distinctCnt.defaultImpl`.
   """,
   examples = """
     Examples:
@@ -87,11 +144,12 @@ trait BaseDistinctCntSketchAggregate extends TypedImperativeAggregate[CpcSketch]
 case class DistinctCntSketches(
     child: Expression,
     mutableAggBufferOffset: Int = 0,
-    inputAggBufferOffset: Int = 0)
+    inputAggBufferOffset: Int = 0,
+    implName: String)
   extends BaseDistinctCntSketchAggregate with ImplicitCastInputTypes {
 
   def this(child: Expression) = {
-    this(child, 0, 0)
+    this(child, 0, 0, SQLConf.get.distinctCntSketchImpl)
   }
 
   override def prettyName: String = "approx_count_distinct_ex"
@@ -111,8 +169,8 @@ case class DistinctCntSketches(
 
   override def inputTypes: Seq[AbstractDataType] = TypeCollection(StringType, LongType) :: Nil
 
-  override def eval(buffer: CpcSketch): Any = {
-    buffer.getEstimate.toLong
+  override def eval(buffer: BaseDistinctCntSketchImpl): Any = {
+    buffer.getEstimate
   }
 }
 
@@ -131,11 +189,12 @@ case class DistinctCntSketches(
 case class SketchDistinctCnt(
     child: Expression,
     mutableAggBufferOffset: Int = 0,
-    inputAggBufferOffset: Int = 0)
+    inputAggBufferOffset: Int = 0,
+    implName: String)
   extends BaseDistinctCntSketchAggregate with ImplicitCastInputTypes {
 
   def this(child: Expression) = {
-    this(child, 0, 0)
+    this(child, 0, 0, SQLConf.get.distinctCntSketchImpl)
   }
 
   override def prettyName: String = "approx_freqitems_accumulate"
@@ -155,8 +214,8 @@ case class SketchDistinctCnt(
 
   override def inputTypes: Seq[AbstractDataType] = StringType :: Nil
 
-  override def eval(buffer: CpcSketch): Any = {
-    buffer.toByteArray()
+  override def eval(buffer: BaseDistinctCntSketchImpl): Any = {
+    buffer.serializeTo()
   }
 }
 
@@ -169,22 +228,23 @@ case class SketchDistinctCnt(
 case class CombineDistinctCntSketches(
     child: Expression,
     mutableAggBufferOffset: Int,
-    inputAggBufferOffset: Int)
-  extends TypedImperativeAggregate[CpcSketch]
+    inputAggBufferOffset: Int,
+    implName: String)
+  extends TypedImperativeAggregate[BaseDistinctCntSketchImpl]
     with ImplicitCastInputTypes
     with Logging {
 
   def this(child: Expression) = {
-    this(child, 0, 0)
+    this(child, 0, 0, SQLConf.get.distinctCntSketchImpl)
   }
 
   override def prettyName: String = "approx_count_distinct_combine"
   override def withNewMutableAggBufferOffset(newMutableAggBufferOffset: Int)
-  : CombineDistinctCntSketches = {
+    : CombineDistinctCntSketches = {
     copy(mutableAggBufferOffset = newMutableAggBufferOffset)
   }
   override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int)
-  : CombineDistinctCntSketches = {
+    : CombineDistinctCntSketches = {
     copy(inputAggBufferOffset = newInputAggBufferOffset)
   }
 
@@ -199,45 +259,42 @@ case class CombineDistinctCntSketches(
 
   override def inputTypes: Seq[AbstractDataType] = Seq(BinaryType)
 
-  override def createAggregationBuffer(): CpcSketch = {
-    new CpcSketch(SQLConf.get.distinctCntSketchLgK)
+  override def createAggregationBuffer(): BaseDistinctCntSketchImpl = {
+    DistinctCntSketch(implName)
   }
 
   override def update(
-      buffer: CpcSketch,
-      input: InternalRow): CpcSketch = {
+      buffer: BaseDistinctCntSketchImpl,
+      input: InternalRow): BaseDistinctCntSketchImpl = {
     try {
       val bytes = child.eval(input).asInstanceOf[Array[Byte]]
-      val otherBuffer = CpcSketch.heapify(Memory.wrap(bytes))
-      val union = new CpcUnion(SQLConf.get.distinctCntSketchLgK)
-      union.update(buffer)
-      union.update(otherBuffer)
-      union.getResult
+      buffer.merge(DistinctCntSketch(implName, bytes))
+      buffer
     } catch {
       case e @ NonFatal(_) =>
         logWarning("Illegal input bytes found, so cannot update " +
-          s"an immediate ${classOf[CpcSketch].getSimpleName} sketch data.")
+          s"an immediate ${buffer.impl.getClass.getSimpleName} sketch data.")
         throw e
     }
   }
 
-  override def merge(buffer: CpcSketch, other: CpcSketch): CpcSketch = {
-    val union = new CpcUnion(SQLConf.get.distinctCntSketchLgK)
-    union.update(buffer)
-    union.update(other)
-    union.getResult
+  override def merge(
+      buffer: BaseDistinctCntSketchImpl,
+      other: BaseDistinctCntSketchImpl): BaseDistinctCntSketchImpl = {
+    buffer.merge(other)
+    buffer
   }
 
-  override def eval(buffer: CpcSketch): Any = {
-    buffer.toByteArray()
+  override def eval(buffer: BaseDistinctCntSketchImpl): Any = {
+    buffer.serializeTo()
   }
 
-  override def serialize(obj: CpcSketch): Array[Byte] = {
-    obj.toByteArray()
+  override def serialize(obj: BaseDistinctCntSketchImpl): Array[Byte] = {
+    obj.serializeTo()
   }
 
-  override def deserialize(bytes: Array[Byte]): CpcSketch = {
-    CpcSketch.heapify(Memory.wrap(bytes))
+  override def deserialize(bytes: Array[Byte]): BaseDistinctCntSketchImpl = {
+    DistinctCntSketch(implName, bytes)
   }
 }
 
@@ -247,8 +304,12 @@ case class CombineDistinctCntSketches(
   """,
   // group = "math_funcs",
   since = "3.1.1")
-case class DistinctCntFromSketchState(child: Expression)
+case class DistinctCntFromSketchState(child: Expression, implName: String)
   extends UnaryExpression with ImplicitCastInputTypes with NullIntolerant with Logging {
+
+  def this(child: Expression) = {
+    this(child, SQLConf.get.distinctCntSketchImpl)
+  }
 
   override def prettyName: String = "approx_count_distinct_estimate"
 
@@ -261,12 +322,12 @@ case class DistinctCntFromSketchState(child: Expression)
 
   @transient private[this] lazy val getOutputDistinctCnt = {
     (ar: Any) => try {
-      val sketch = CpcSketch.heapify(Memory.wrap(ar.asInstanceOf[Array[Byte]]))
-      sketch.getEstimate.toLong
+      val sketch = DistinctCntSketch(implName, ar.asInstanceOf[Array[Byte]])
+      sketch.getEstimate
     } catch {
       case NonFatal(_) =>
         logWarning("Illegal input bytes found, so cannot update " +
-          s"an immediate ${classOf[CpcSketch].getSimpleName} sketch data.")
+          s"an immediate ${DistinctCntSketch(implName).getClass.getSimpleName} sketch data.")
         null
     }
   }

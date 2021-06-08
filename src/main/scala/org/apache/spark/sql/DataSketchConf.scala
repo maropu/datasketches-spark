@@ -22,7 +22,7 @@ import java.util.Locale
 import scala.language.implicitConversions
 
 import org.apache.spark.internal.config.{ConfigBuilder, ConfigEntry, ConfigReader}
-import org.apache.spark.sql.catalyst.expressions.aggregate.QuantileSketch
+import org.apache.spark.sql.catalyst.expressions.aggregate.{DistinctCntSketch, QuantileSketch}
 import org.apache.spark.sql.internal.SQLConf
 
 object DataSketchConf {
@@ -49,7 +49,7 @@ object DataSketchConf {
     }
   }
 
-  val QUANTILE_SKETCH_TYPE = buildConf("spark.sql.dataSketches.quantiles.defaultImpl")
+  val QUANTILE_SKETCH_IMPL = buildConf("spark.sql.dataSketches.quantiles.defaultImpl")
     .doc("A default implementation used in quantile estimation functions.")
     .stringConf
     .transform(_.toUpperCase(Locale.ROOT))
@@ -86,6 +86,13 @@ object DataSketchConf {
     .checkValue(_ > 0, "The parameter `maxMapSize` must be a power of 2.")
     .createWithDefault(1024)
 
+  val DISTINCT_COUNT_SKETCH_IMPL = buildConf("spark.sql.dataSketches.distinctCnt.defaultImpl")
+    .doc("A default implementation used in distinct count estimation functions.")
+    .stringConf
+    .transform(_.toUpperCase(Locale.ROOT))
+    .checkValues(DistinctCntSketch.ImplType.values.map(_.toString))
+    .createWithDefault(DistinctCntSketch.ImplType.CPC.toString)
+
   val DISTINCT_COUNT_SKETCH_LGK = buildConf("spark.sql.dataSketches.distinctCnt.lgK")
     .doc("Specifies the parameter `lgK` for the distinct count sketch implementation " +
       "named `CpcSketch`.")
@@ -99,7 +106,7 @@ class DataSketchConf(conf: SQLConf) {
 
   private val reader = new ConfigReader(conf.settings)
 
-  def quantileSketchType: String = getConf(QUANTILE_SKETCH_TYPE)
+  def quantileSketchImpl: String = getConf(QUANTILE_SKETCH_IMPL)
 
   def quantileSketchKInKll: Int = getConf(QUANTILE_SKETCH_KLL_K)
 
@@ -108,6 +115,8 @@ class DataSketchConf(conf: SQLConf) {
   def quantileSketchKInMergeable: Int = getConf(QUANTILE_SKETCH_MERGEABLE_K)
 
   def frequentItemSketchMaxMapSize: Int = getConf(FREQUENT_ITEM_SKETCH_MAX_MAP_SIZE)
+
+  def distinctCntSketchImpl: String = getConf(DISTINCT_COUNT_SKETCH_IMPL)
 
   def distinctCntSketchLgK: Int = getConf(DISTINCT_COUNT_SKETCH_LGK)
 

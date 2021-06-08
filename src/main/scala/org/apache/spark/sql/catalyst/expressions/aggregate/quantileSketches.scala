@@ -306,7 +306,7 @@ case class QuantileSketch(
     percentageExpression: Expression,
     mutableAggBufferOffset: Int = 0,
     inputAggBufferOffset: Int = 0,
-    implName: String = SQLConf.get.quantileSketchType) extends BaseQuantileSketch {
+    implName: String = SQLConf.get.quantileSketchImpl) extends BaseQuantileSketch {
 
   def this(child: Expression, percentageExpression: Expression) = {
     this(child, percentageExpression, 0, 0)
@@ -449,7 +449,7 @@ case class SketchQuantile(
   with ImplicitCastInputTypes {
 
   def this(child: Expression) = {
-    this(child, 0, 0, SQLConf.get.quantileSketchType)
+    this(child, 0, 0, SQLConf.get.quantileSketchImpl)
   }
 
   override def prettyName: String = "approx_percentile_accumulate"
@@ -490,7 +490,7 @@ case class CombineQuantileSketches(
   with Logging {
 
   def this(child: Expression) = {
-    this(child, 0, 0, SQLConf.get.quantileSketchType)
+    this(child, 0, 0, SQLConf.get.quantileSketchImpl)
   }
 
   override def prettyName: String = "approx_percentile_combine"
@@ -570,7 +570,7 @@ case class QuantileFromSketchState(
   extends BinaryExpression with BasePercentileEstimation with NullIntolerant with Logging {
 
   def this(child: Expression, percentageExpression: Expression) = {
-    this(child, percentageExpression, SQLConf.get.quantileSketchType)
+    this(child, percentageExpression, SQLConf.get.quantileSketchImpl)
   }
 
   override def prettyName: String = "approx_percentile_estimate"
@@ -642,11 +642,11 @@ case class PmfFromSketchState(
   extends BinaryExpression with ImplicitCastInputTypes with NullIntolerant with Logging {
 
   def this(child: Expression, numSplits: Expression) = {
-    this(child, numSplits, SQLConf.get.quantileSketchType)
+    this(child, numSplits, SQLConf.get.quantileSketchImpl)
   }
 
   def this(child: Expression) = {
-    this(child, Literal(9), SQLConf.get.quantileSketchType)
+    this(child, Literal(9), SQLConf.get.quantileSketchImpl)
   }
 
   override def prettyName: String = "approx_pmf_estimate"

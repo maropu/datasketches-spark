@@ -60,7 +60,7 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
 
   test("approximate percentile tests") {
     Seq("KLL", "REQ").foreach { impl =>
-      withSQLConf(DataSketchConf.QUANTILE_SKETCH_TYPE.key -> impl) {
+      withSQLConf(DataSketchConf.QUANTILE_SKETCH_IMPL.key -> impl) {
         val df1 = _spark.sql(
           s"""
              |SELECT approx_percentile_ex(c, array(0.5, 0.4, 0.1))

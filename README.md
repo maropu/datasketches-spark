@@ -318,5 +318,5 @@ you can use similar functions to the other two sketch ones:
 ## Bug reports
 
 If you hit some bugs and requests, please leave some comments on [Issues](https://github.com/maropu/datasketches-spark/issues)
-or Twitter([@maropu](http://twitter.com/#!/maropu)).
+or Twitter ([@maropu](http://twitter.com/#!/maropu)).
 

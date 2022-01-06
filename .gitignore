@@ -71,7 +71,7 @@ streaming-tests.log
 target/
 unit-tests.log
 work/
-bin/spark-*-bin-hadoop2.7
+bin/spark-*-bin-hadoop*
 
 # For Hive
 TempStatsStore/

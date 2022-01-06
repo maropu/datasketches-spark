@@ -20,8 +20,7 @@ package org.apache.spark.sql
 import org.apache.spark.sql.catalyst.FunctionIdentifier
 import org.apache.spark.sql.catalyst.expressions.aggregate.DataSketches
 
-// TODO: Replaces the base trait with `SparkSessionExtensionsProvider` in Spark v3.2.0
-class DataSketchExtensions extends Function1[SparkSessionExtensions, Unit] {
+class DataSketchExtensions extends SparkSessionExtensionsProvider {
 
   override def apply(v: SparkSessionExtensions): Unit = {
     DataSketches.sketchExprs.foreach { case (name, (info, builder)) =>

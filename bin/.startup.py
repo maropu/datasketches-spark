@@ -28,4 +28,3 @@ jvm.DataSketchApi.install()
 spark = spark.newSession()
 
 print("DataSketches APIs available as built-in functions.")
-

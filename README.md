@@ -312,7 +312,6 @@ you can use similar functions to the other two sketch ones:
 
 ## TODO
 
- - Supports automatic function loading when initializing SparkSession (For more details, see SPARK-35380).
  - Checks performance differences between the built-in funtion and DataSketches ones.
 
 ## Bug reports

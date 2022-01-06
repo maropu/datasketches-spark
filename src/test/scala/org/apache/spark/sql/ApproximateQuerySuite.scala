@@ -90,6 +90,7 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
            |  FROM VALUES (0), (null) AS t(c);
          """.stripMargin)
       assert(df.schema.head.dataType === expectedType)
+      checkAnswer(df, Row(0))
     }
   }
 

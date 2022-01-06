@@ -18,6 +18,7 @@
 package org.apache.spark.sql
 
 import org.apache.spark.SparkConf
+import org.apache.spark.sql.catalyst.expressions.aggregate.DataSketches
 import org.apache.spark.sql.internal.DataSketchConf
 import org.apache.spark.sql.test.{SharedSparkSession, SQLTestUtils}
 import org.apache.spark.sql.types._
@@ -142,30 +143,6 @@ class ApproximateQuerySuite extends QueryTest with SharedSparkSession with SQLTe
       checkAnswer(df2, Row(Array(1.0, 3.0, 3.0)))
       val df3 = merged.selectExpr("approx_pmf_estimate(merged, 2)")
       checkAnswer(df3, Row(Array(0.0, 1.0)))
-    }
-  }
-
-  // TODO: Fix this test failure:
-  //  org.apache.spark.sql.AnalysisException: Undefined function: 'approx_percentile_accumulate'.
-  //    This function is neither a registered temporary function nor a permanent function registered
-  //    in the database 'default'.; line 1 pos 7
-  ignore("approx_percentile_estimate ignores an input type in output") {
-    Seq("TINYINT", "SHORT", "INT", "LONG", "FLOAT", "DOUBLE", "DECIMAL(10, 0)")
-        .foreach { inputType =>
-      withTempView("t") {
-        spark.sql(
-          s"""
-             |CREATE TEMPORARY VIEW t AS
-             |  SELECT approx_percentile_accumulate(CAST(c AS $inputType)) summaries
-             |    FROM VALUES (0), (1), (2), (null), (10) AS t(c);
-           """.stripMargin)
-
-        val df = spark.sql(
-          s"""
-             |SELECT approx_percentile_estimate(summaries, 0.5) FROM t;
-           """.stripMargin)
-        assert(df.schema.head.dataType === DoubleType)
-      }
     }
   }
 
@@ -295,7 +272,7 @@ class ApproximateQuerySuite extends QueryTest with SharedSparkSession with SQLTe
           s"""
              |SELECT $f(CAST(c AS $inputType))
              |  FROM VALUES (1), (1), (2), (null), (2), (3) AS t(c);
-             """.stripMargin)
+           """.stripMargin)
         checkAnswer(df2, Row(3L))
       }
     }
@@ -339,5 +316,32 @@ class ApproximateQuerySuite extends QueryTest with SharedSparkSession with SQLTe
       val df = merged.selectExpr("approx_count_distinct_estimate(merged)")
       checkAnswer(df, Row(3L))
     }
+  }
+
+  test("approx_percentile_estimate ignores an input type in output") {
+    // TODO: Fix this test failure:
+    //  org.apache.spark.sql.AnalysisException: Undefined function: 'approx_percentile_accumulate'.
+    //    This function is neither a registered temporary function nor a permanent function
+    //    registered in the database 'default'.; line 1 pos 7
+    DataSketches.install()
+
+    Seq("TINYINT", "SHORT", "INT", "LONG", "FLOAT", "DOUBLE", "DECIMAL(10, 0)")
+      .foreach { inputType =>
+        withTempView("t") {
+          spark.sql(
+            s"""
+               |CREATE TEMPORARY VIEW t AS
+               |  SELECT approx_percentile_accumulate(CAST(c AS $inputType)) summaries
+               |    FROM VALUES (0), (1), (2), (null), (10) AS t(c);
+             """.stripMargin)
+
+          val df = spark.sql(
+            s"""
+               |SELECT approx_percentile_estimate(summaries, 0.5) FROM t;
+             """.stripMargin)
+          assert(df.schema.head.dataType === DoubleType)
+          checkAnswer(df, Row(2.0))
+        }
+      }
   }
 }

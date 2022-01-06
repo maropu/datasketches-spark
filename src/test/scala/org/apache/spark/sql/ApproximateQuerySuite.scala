@@ -192,6 +192,7 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
              |SELECT approx_percentile_estimate(summaries, 0.5) FROM t;
            """.stripMargin)
         assert(df.schema.head.dataType === DoubleType)
+        checkAnswer(df, Row(2.0))
       }
     }
   }

@@ -27,7 +27,6 @@ import org.apache.datasketches.quantiles.{DoublesSketch => jDoublesSketch, Doubl
 import org.apache.datasketches.req.{ReqSketch => jReqSketch}
 
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.DataSketchConf._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult.{TypeCheckFailure, TypeCheckSuccess}
@@ -35,6 +34,7 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode}
 import org.apache.spark.sql.catalyst.expressions.codegen.CodeGenerator._
 import org.apache.spark.sql.catalyst.util.{ArrayData, GenericArrayData}
+import org.apache.spark.sql.internal.DataSketchConf._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 
@@ -317,6 +317,8 @@ case class QuantileSketch(
     copy(mutableAggBufferOffset = newMutableAggBufferOffset)
   override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): QuantileSketch =
     copy(inputAggBufferOffset = newInputAggBufferOffset)
+  override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): Expression =
+    super.legacyWithNewChildren(newChildren)
 }
 
 @ExpressionDescription(
@@ -353,6 +355,8 @@ case class KllFloatsSketch(
     copy(mutableAggBufferOffset = newMutableAggBufferOffset)
   override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): KllFloatsSketch =
     copy(inputAggBufferOffset = newInputAggBufferOffset)
+  override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): Expression =
+    super.legacyWithNewChildren(newChildren)
 }
 
 @ExpressionDescription(
@@ -389,6 +393,8 @@ case class ReqSketch(
     copy(mutableAggBufferOffset = newMutableAggBufferOffset)
   override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): ReqSketch =
     copy(inputAggBufferOffset = newInputAggBufferOffset)
+  override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): Expression =
+    super.legacyWithNewChildren(newChildren)
 }
 
 @ExpressionDescription(
@@ -425,6 +431,8 @@ case class MergeableSketch(
     copy(mutableAggBufferOffset = newMutableAggBufferOffset)
   override def withNewInputAggBufferOffset(newInputAggBufferOffset: Int): MergeableSketch =
     copy(inputAggBufferOffset = newInputAggBufferOffset)
+  override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): Expression =
+    super.legacyWithNewChildren(newChildren)
 }
 
 @ExpressionDescription(
@@ -470,6 +478,9 @@ case class SketchQuantile(
   override def eval(buffer: BaseQuantileSketchImpl): Any = {
     buffer.serializeTo()
   }
+
+  override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): Expression =
+    super.legacyWithNewChildren(newChildren)
 }
 
 @ExpressionDescription(
@@ -550,6 +561,9 @@ case class CombineQuantileSketches(
   override def deserialize(bytes: Array[Byte]): BaseQuantileSketchImpl = {
     QuantileSketch(implName, bytes)
   }
+
+  override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): Expression =
+    super.legacyWithNewChildren(newChildren)
 }
 
 @ExpressionDescription(
@@ -623,6 +637,11 @@ case class QuantileFromSketchState(
          |}
        """.stripMargin
     })
+  }
+
+  override protected def withNewChildrenInternal(
+      newLeft: Expression, newRight: Expression): Expression = {
+    copy(newLeft, newRight)
   }
 }
 
@@ -713,5 +732,10 @@ case class PmfFromSketchState(
          |}
        """.stripMargin
     })
+  }
+
+  override protected def withNewChildrenInternal(
+      newLeft: Expression, newRight: Expression): Expression = {
+    copy(newLeft, newRight)
   }
 }

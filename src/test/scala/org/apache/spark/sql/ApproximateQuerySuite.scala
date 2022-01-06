@@ -19,6 +19,8 @@ package org.apache.spark.sql
 
 import org.scalatest.BeforeAndAfterAll
 
+import org.apache.spark.sql.catalyst.expressions.aggregate.DataSketches
+import org.apache.spark.sql.internal.DataSketchConf
 import org.apache.spark.sql.test.SQLTestUtils
 import org.apache.spark.sql.types._
 
@@ -32,8 +34,11 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
     if (_spark == null) {
       _spark = SparkSession.builder()
         .master("local[1]")
-        .withExtensions(new DataSketchExtensions())
+        // .withExtensions(new DataSketchExtensions())
         .getOrCreate()
+
+      // TODO: Needs to install functions via `DataSketchExtensions`
+      DataSketches.install()
     }
     super.beforeAll()
   }
@@ -157,7 +162,7 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
         .agg(expr("approx_percentile_accumulate(v) AS summaries"))
 
       assert(summaries.schema.toDDL ===
-        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP>,`summaries` BINARY")
+        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP> NOT NULL,`summaries` BINARY")
       checkAnswer(summaries.selectExpr("bit_length(summaries)"),
         Seq(Row(160), Row(160), Row(160), Row(96)))
 
@@ -294,7 +299,7 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
         .agg(expr("approx_freqitems_accumulate(v) AS summaries"))
 
       assert(summaries.schema.toDDL ===
-        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP>,`summaries` BINARY")
+        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP> NOT NULL,`summaries` BINARY")
       checkAnswer(summaries.selectExpr("bit_length(summaries)"),
         Seq(Row(360), Row(360), Row(464), Row(568)))
 
@@ -353,7 +358,7 @@ class ApproximateQuerySuite extends QueryTest with SQLTestUtils with BeforeAndAf
         .agg(expr("approx_count_distinct_accumulate(v) AS summaries"))
 
       assert(summaries.schema.toDDL ===
-        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP>,`summaries` BINARY")
+        "`window` STRUCT<`start`: TIMESTAMP, `end`: TIMESTAMP> NOT NULL,`summaries` BINARY")
       checkAnswer(summaries.selectExpr("bit_length(summaries)"),
         Seq(Row(160), Row(160), Row(160), Row(192)))
 

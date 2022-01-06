@@ -24,12 +24,12 @@ import org.apache.datasketches.frequencies.{ErrorType, ItemsSketch, LongsSketch}
 import org.apache.datasketches.memory.Memory
 
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.DataSketchConf._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode}
 import org.apache.spark.sql.catalyst.expressions.codegen.CodeGenerator._
 import org.apache.spark.sql.catalyst.util.GenericArrayData
+import org.apache.spark.sql.internal.DataSketchConf._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
@@ -187,6 +187,9 @@ case class FreqItemSketches(
     }
     new GenericArrayData(freqItems)
   }
+
+  override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): Expression =
+    super.legacyWithNewChildren(newChildren)
 }
 
 @ExpressionDescription(
@@ -235,6 +238,9 @@ case class SketchFreqItems(
   override def eval(buffer: BaseFreqSketchImpl): Any = {
     buffer.serializeTo()
   }
+
+  override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): Expression =
+    super.legacyWithNewChildren(newChildren)
 }
 
 @ExpressionDescription(
@@ -312,6 +318,9 @@ case class CombineFreqItemSketches(
   override def deserialize(bytes: Array[Byte]): BaseFreqSketchImpl = {
     FreqSketch(bytes, StringType)
   }
+
+  override protected def withNewChildrenInternal(newChildren: IndexedSeq[Expression]): Expression =
+    super.legacyWithNewChildren(newChildren)
 }
 
 @ExpressionDescription(
@@ -374,4 +383,7 @@ case class FreqItemFromSketchState(child: Expression)
        """.stripMargin
     })
   }
+
+  override protected def withNewChildInternal(newChild: Expression): Expression =
+    copy(newChild)
 }

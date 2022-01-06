@@ -19,10 +19,10 @@ Welcome to
       ____              __
      / __/__  ___ _____/ /__
     _\ \/ _ \/ _ `/ __/  '_/
-   /__ / .__/\_,_/_/ /_/\_\   version 3.1.2
+   /__ / .__/\_,_/_/ /_/\_\   version 3.2.0
       /_/
 
-Using Python version 3.6.8 (default, Dec 29 2018 19:04:46)
+Using Python version 3.7.11 (default, Jul 27 2021 07:03:16)
 SparkSession available as 'spark'.
 DataSketches APIs available as built-in functions.
 

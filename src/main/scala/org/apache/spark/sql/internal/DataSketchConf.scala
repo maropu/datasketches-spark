@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql
+package org.apache.spark.sql.internal
 
 import java.util.Locale
 
@@ -23,7 +23,6 @@ import scala.language.implicitConversions
 
 import org.apache.spark.internal.config.{ConfigBuilder, ConfigEntry, ConfigReader}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{DistinctCntSketch, QuantileSketch}
-import org.apache.spark.sql.internal.SQLConf
 
 object DataSketchConf {
 
@@ -32,22 +31,7 @@ object DataSketchConf {
    */
   implicit def SQLConfToDataSketchConf(conf: SQLConf): DataSketchConf = new DataSketchConf(conf)
 
-  private val sqlConfEntries = SQLConf.sqlConfEntries
-
-  private def register(entry: ConfigEntry[_]): Unit = sqlConfEntries.synchronized {
-    require(!sqlConfEntries.containsKey(entry.key),
-      s"Duplicate SQLConfigEntry. ${entry.key} has been registered")
-    sqlConfEntries.put(entry.key, entry)
-  }
-
-  def buildConf(key: String): ConfigBuilder = ConfigBuilder(key).onCreate(register)
-
-  def buildStaticConf(key: String): ConfigBuilder = {
-    ConfigBuilder(key).onCreate { entry =>
-      SQLConf.staticConfKeys.add(entry.key)
-      register(entry)
-    }
-  }
+  def buildConf(key: String): ConfigBuilder = SQLConf.buildConf(key)
 
   val QUANTILE_SKETCH_IMPL = buildConf("spark.sql.dataSketches.quantiles.sketchImpl")
     .doc("A sketch implementation used in quantile estimation functions.")
@@ -134,8 +118,7 @@ class DataSketchConf(conf: SQLConf) {
    * return `defaultValue` in [[ConfigEntry]].
    */
   private def getConf[T](entry: ConfigEntry[T]): T = {
-    require(sqlConfEntries.get(entry.key) == entry || SQLConf.staticConfKeys.contains(entry.key),
-      s"$entry is not registered")
+    require(SQLConf.containsConfigEntry(entry), s"$entry is not registered")
     entry.readFrom(reader)
   }
 }

@@ -27,7 +27,6 @@ import org.apache.datasketches.quantiles.{DoublesSketch => jDoublesSketch, Doubl
 import org.apache.datasketches.req.{ReqSketch => jReqSketch}
 
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.DataSketchConf._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult.{TypeCheckFailure, TypeCheckSuccess}
@@ -35,6 +34,7 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode}
 import org.apache.spark.sql.catalyst.expressions.codegen.CodeGenerator._
 import org.apache.spark.sql.catalyst.util.{ArrayData, GenericArrayData}
+import org.apache.spark.sql.internal.DataSketchConf._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 

@@ -24,7 +24,6 @@ import org.apache.spark.sql.catalyst.FunctionIdentifier
 import org.apache.spark.sql.catalyst.analysis.FunctionRegistry
 import org.apache.spark.sql.catalyst.analysis.FunctionRegistry.FunctionBuilder
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.trees.TreeNodeTag
 
 object DataSketches {
   import FunctionRegistoryShim._
@@ -77,8 +76,6 @@ object DataSketches {
  */
 object FunctionRegistoryShim {
 
-  private val FUNC_ALIAS = TreeNodeTag[String]("functionAliasName")
-
   /** See usage above. */
   private[aggregate] def expression[T <: Expression](name: String, setAlias: Boolean = false)
       (implicit tag: ClassTag[T]): (String, (ExpressionInfo, FunctionBuilder)) = {
@@ -99,7 +96,7 @@ object FunctionRegistoryShim {
         // If there is an apply method that accepts Seq[Expression], use that one.
         try {
           val exp = varargCtor.get.newInstance(expressions).asInstanceOf[Expression]
-          if (setAlias) exp.setTagValue(FUNC_ALIAS, name)
+          if (setAlias) exp.setTagValue(FunctionRegistry.FUNC_ALIAS, name)
           exp
         } catch {
           // the exception is an invocation exception. To get a meaningful message, we need the
@@ -129,7 +126,7 @@ object FunctionRegistoryShim {
         }
         try {
           val exp = f.newInstance(expressions : _*).asInstanceOf[Expression]
-          if (setAlias) exp.setTagValue(FUNC_ALIAS, name)
+          if (setAlias) exp.setTagValue(FunctionRegistry.FUNC_ALIAS, name)
           exp
         } catch {
           // the exception is an invocation exception. To get a meaningful message, we need the

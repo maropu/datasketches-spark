@@ -26,6 +26,7 @@ import org.apache.datasketches.memory.Memory
 import org.apache.datasketches.quantiles.{DoublesSketch => jDoublesSketch, DoublesUnion, UpdateDoublesSketch}
 import org.apache.datasketches.req.{ReqSketch => jReqSketch}
 
+import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
@@ -197,9 +198,15 @@ trait BasePercentileEstimation extends ImplicitCastInputTypes {
     case ShortType => (v: Double) => v.toShort
     case IntegerType => (v: Double) => v.toInt
     case LongType => (v: Double) => v.toLong
-    case DoubleType => (v: Double) => v.toFloat
+    case FloatType => (v: Double) => v.toFloat
     case DoubleType => (v: Double) => v
-    case DecimalType.Fixed(p, s) => (v: Double) => Decimal(v).changePrecision(p, s)
+    case DecimalType.Fixed(p, s) => (v: Double) => {
+      val decimal = Decimal(v)
+      if (!decimal.changePrecision(p, s)) {
+        throw new SparkException(s"Cannot change precision: p=$p s=$s")
+      }
+      decimal
+    }
     case t => throw new IllegalStateException(s"Unexpected data type ${t.catalogString}")
   }
 

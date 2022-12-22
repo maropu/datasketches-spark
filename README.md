@@ -1,7 +1,7 @@
 [![License](http://img.shields.io/:license-Apache_v2-blue.svg)](https://github.com/maropu/datasketches-spark/blob/master/LICENSE)
 [![Build and test](https://github.com/maropu/datasketches-spark/workflows/Build%20and%20test/badge.svg)](https://github.com/maropu/datasketches-spark/actions?query=workflow%3A%22Build+and+test%22)
 
-This repository provies Apache DataSketches experimental adapters for Apache Spark.
+This repository provides Apache DataSketches experimental adapters for Apache Spark.
 Please visit [the main website](https://datasketches.apache.org/) for more DataSketches information.
 
 ## Quantile Sketches
